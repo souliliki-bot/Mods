@@ -77,7 +77,7 @@ public final class MatchManager {
     }
 
     private void sendSetting(ServerPlayerEntity player, String label, String key, boolean enabled) {
-        Text line = Text.literal("§f" + label + ": ");
+        Text.MutableText line = Text.literal("§f" + label + ": ");
         Text button = Text.literal(enabled ? "[ВКЛ]" : "[ВЫКЛ]").styled(style ->
             style.withColor(enabled ? 0x55FF55 : 0xFF5555)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal setting " + key)));
