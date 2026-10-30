@@ -36,6 +36,14 @@ class ItemClassifierTest {
     }
 
     @Test
+    void excludesDecorativeBlockItemPaths() {
+        assertEquals(true, ItemClassifier.isDecorativeBlockPath("oak_stairs"));
+        assertEquals(true, ItemClassifier.isDecorativeBlockPath("modded_glass_pane"));
+        assertEquals(false, ItemClassifier.isDecorativeBlockPath("diamond_sword"));
+        assertEquals(false, ItemClassifier.isDecorativeBlockPath("iron_ingot"));
+    }
+
+    @Test
     void keepsUnknownModdedItemsInCommon() {
         assertEquals(ChestClass.COMMON, ItemClassifier.classify("arcane_crystal"));
     }
