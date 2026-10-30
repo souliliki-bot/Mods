@@ -13,15 +13,17 @@ public final class SettingsScreen extends Screen {
     private final boolean arenaTeleport;
     private final boolean restoreHealth;
     private final boolean restoreHunger;
+    private final int roundsPerMatch;
     private final List<Integer> classWeights;
     private final List<Boolean> enabledClasses;
 
     public SettingsScreen(boolean arenaTeleport, boolean restoreHealth, boolean restoreHunger,
-                          List<Integer> classWeights, List<Boolean> enabledClasses) {
+                          int roundsPerMatch, List<Integer> classWeights, List<Boolean> enabledClasses) {
         super(Text.literal("Обман и доверие — настройки"));
         this.arenaTeleport = arenaTeleport;
         this.restoreHealth = restoreHealth;
         this.restoreHunger = restoreHunger;
+        this.roundsPerMatch = roundsPerMatch;
         this.classWeights = List.copyOf(classWeights);
         this.enabledClasses = List.copyOf(enabledClasses);
     }
@@ -33,12 +35,21 @@ public final class SettingsScreen extends Screen {
         addDrawableChild(toggleButton(center, top, "Телепортация на арену", "arena", arenaTeleport));
         addDrawableChild(toggleButton(center, top + 23, "Восстановление здоровья", "health", restoreHealth));
         addDrawableChild(toggleButton(center, top + 46, "Восстановление голода", "hunger", restoreHunger));
+        addDrawableChild(ButtonWidget.builder(Text.literal("−"), button ->
+            sendCommand("leaveorsteal rounds " + Math.max(1, roundsPerMatch - 1)))
+            .dimensions(center - 125, top + 69, 28, 20).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("+"), button ->
+            sendCommand("leaveorsteal rounds " + Math.min(30, roundsPerMatch + 1)))
+            .dimensions(center + 97, top + 69, 28, 20).build());
 
+        context.drawCenteredTextWithShadow(textRenderer,
+            Text.literal("Количество раундов: " + roundsPerMatch + " (1–30)"),
+            width / 2, top + 75, 0xFFFFFF);
         for (ChestClass chestClass : ChestClass.values()) {
             int index = chestClass.ordinal();
             int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
             boolean enabled = index < enabledClasses.size() && enabledClasses.get(index);
-            int y = top + 83 + index * 22;
+            int y = top + 106 + index * 22;
             String name = chestClass.name().toLowerCase(Locale.ROOT);
 
             addDrawableChild(ButtonWidget.builder(Text.literal(enabled ? "ВКЛ" : "ВЫКЛ"), button ->
@@ -52,7 +63,7 @@ public final class SettingsScreen extends Screen {
                 .dimensions(center + 97, y, 28, 20).build());
         }
 
-        int closeY = top + 83 + ChestClass.values().length * 22 + 7;
+        int closeY = top + 106 + ChestClass.values().length * 22 + 7;
         addDrawableChild(ButtonWidget.builder(Text.literal("Закрыть"), button -> close())
             .dimensions(center - 100, closeY, 200, 20).build());
     }
@@ -86,7 +97,7 @@ public final class SettingsScreen extends Screen {
             int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
             context.drawCenteredTextWithShadow(textRenderer,
                 Text.literal(chestClass.displayName() + ": " + weight),
-                width / 2, top + 89 + index * 22 + 6, 0xFFFFFF);
+                width / 2, top + 112 + index * 22 + 6, 0xFFFFFF);
         }
         context.drawCenteredTextWithShadow(textRenderer,
             Text.literal("Классы: ВКЛ/ВЫКЛ • Вес: −/+ • Сохранение автоматическое"),
