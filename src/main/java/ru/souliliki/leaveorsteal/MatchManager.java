@@ -10,6 +10,7 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.world.World;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import net.minecraft.text.ClickEvent;
 import net.minecraft.util.Identifier;
 import net.minecraft.registry.RegistryOps;
 import net.minecraft.nbt.NbtOps;
@@ -33,9 +34,66 @@ public final class MatchManager {
     private Path arenaFile;
     private ArenaPoint arenaFirst;
     private ArenaPoint arenaSecond;
+    private Path settingsFile;
+    private boolean arenaTeleportEnabled = true;
+    private boolean restoreHealthEnabled = true;
+    private boolean restoreHungerEnabled = true;
 
     public static MatchManager get() { return INSTANCE; }
 
+    public synchronized void loadSettings(MinecraftServer server) {
+        settingsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-settings.json");
+        if (!Files.exists(settingsFile)) return;
+        try (var reader = Files.newBufferedReader(settingsFile)) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            arenaTeleportEnabled = !root.has("arenaTeleport") || root.get("arenaTeleport").getAsBoolean();
+            restoreHealthEnabled = !root.has("restoreHealth") || root.get("restoreHealth").getAsBoolean();
+            restoreHungerEnabled = !root.has("restoreHunger") || root.get("restoreHunger").getAsBoolean();
+        } catch (Exception exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось загрузить настройки мода", exception);
+        }
+    }
+
+    private synchronized void saveSettings() {
+        if (settingsFile == null) return;
+        JsonObject root = new JsonObject();
+        root.addProperty("arenaTeleport", arenaTeleportEnabled);
+        root.addProperty("restoreHealth", restoreHealthEnabled);
+        root.addProperty("restoreHunger", restoreHungerEnabled);
+        try {
+            Files.createDirectories(settingsFile.getParent());
+            try (var writer = Files.newBufferedWriter(settingsFile)) { GSON.toJson(root, writer); }
+        } catch (IOException exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось сохранить настройки мода", exception);
+        }
+    }
+
+    public synchronized void showSettings(ServerPlayerEntity player) {
+        player.sendMessage(Text.literal("§6§lОбман и доверие — настройки"), false);
+        sendSetting(player, "Телепортация на арену", "arena", arenaTeleportEnabled);
+        sendSetting(player, "Восстанавливать здоровье", "health", restoreHealthEnabled);
+        sendSetting(player, "Восстанавливать голод", "hunger", restoreHungerEnabled);
+        player.sendMessage(Text.literal("§7Нажми на [ВКЛ]/[ВЫКЛ], чтобы изменить параметр."), false);
+    }
+
+    private void sendSetting(ServerPlayerEntity player, String label, String key, boolean enabled) {
+        Text line = Text.literal("§f" + label + ": ");
+        Text button = Text.literal(enabled ? "[ВКЛ]" : "[ВЫКЛ]").styled(style ->
+            style.withColor(enabled ? 0x55FF55 : 0xFF5555)
+                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal setting " + key)));
+        player.sendMessage(line.append(button), false);
+    }
+
+    public synchronized void toggleSetting(ServerPlayerEntity player, String key) {
+        switch (key) {
+            case "arena" -> arenaTeleportEnabled = !arenaTeleportEnabled;
+            case "health" -> restoreHealthEnabled = !restoreHealthEnabled;
+            case "hunger" -> restoreHungerEnabled = !restoreHungerEnabled;
+            default -> { player.sendMessage(Text.literal("§cНеизвестная настройка."), false); return; }
+        }
+        saveSettings();
+        showSettings(player);
+    }
     public synchronized void loadArena(MinecraftServer server) {
         arenaFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-arena.json");
         if (!Files.exists(arenaFile)) return;
@@ -293,15 +351,19 @@ public final class MatchManager {
     }
 
     private void prepareForDuel(ServerPlayerEntity player) {
-        player.setHealth(player.getMaxHealth());
-        player.getHungerManager().setFoodLevel(20);
-        player.getHungerManager().setSaturationLevel(20.0f);
-        player.sendMessage(Text.literal("§aПеред дуэлью здоровье и сытость восстановлены. Твоя экипировка и эффекты не изменены."), false);
+        if (restoreHealthEnabled) player.setHealth(player.getMaxHealth());
+        if (restoreHungerEnabled) {
+            player.getHungerManager().setFoodLevel(20);
+            player.getHungerManager().setSaturationLevel(20.0f);
+        }
+        if (restoreHealthEnabled || restoreHungerEnabled) player.sendMessage(Text.literal("§aПеред дуэлью параметры игрока восстановлены. Экипировка и эффекты не изменены."), false);
     }
     private void teleportToArena(MinecraftServer server, Match match) {
         ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
         ServerPlayerEntity second = server.getPlayerManager().getPlayer(match.second);
-        if (arenaFirst == null || arenaSecond == null) {
+        if (!arenaTeleportEnabled) {
+            notifyBoth(server, match, "§7Телепортация на арену отключена в настройках.");
+        } else if (arenaFirst == null || arenaSecond == null) {
             notifyBoth(server, match, "§eТочки арены не настроены: бой начнётся на текущем месте. Используй /leaveorsteal setarena1 и setarena2.");
         } else {
             if (first != null) teleport(first, arenaFirst);
