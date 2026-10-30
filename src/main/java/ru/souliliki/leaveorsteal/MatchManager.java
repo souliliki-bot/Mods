@@ -51,7 +51,28 @@ public final class MatchManager {
         }
     }
 
-    public synchronized void saveOnShutdown(MinecraftServer server) { saveRewards(server); }
+    public synchronized void saveOnShutdown(MinecraftServer server) {
+        Set<Match> activeMatches = new HashSet<>(matches.values());
+        for (Match match : activeMatches) {
+            if (match.roundItem != null && !match.roundItem.isEmpty()) {
+                match.items.get(match.owner).add(match.roundItem.copy());
+                match.roundItem = ItemStack.EMPTY;
+            }
+            for (UUID id : List.of(match.first, match.second)) {
+                List<ItemStack> pending = pendingRewards.computeIfAbsent(id, ignored -> new ArrayList<>());
+                for (ItemStack stack : match.items.get(id)) pending.add(stack.copy());
+                match.items.get(id).clear();
+            }
+            match.phase = Phase.FINISHED;
+        }
+        matches.clear();
+        queue.clear();
+        saveRewards(server);
+    }
+
+    public synchronized void onJoin(ServerPlayerEntity player) {
+        deliverPendingRewards(player);
+    }
 
     private synchronized void saveRewards(MinecraftServer server) {
         if (rewardsFile == null) rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
