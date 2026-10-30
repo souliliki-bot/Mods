@@ -351,6 +351,7 @@ function beginFinalPhase() {
     try {
       const mob = p.dimension.spawnEntity(type, state.arena.second ? { x: state.arena.second.x + 0.5, y: state.arena.second.y, z: state.arena.second.z + 0.5 } : { x: p.location.x + 5, y: p.location.y, z: p.location.z });
       match.finalMobId = mob.id;
+      match.bossPhase = 1;
       mob.nameTag = "Финальный соперник";
       mob.addEffect("strength", 20 * 60 * 10, { amplifier: 1, showParticles: true });
       restorePlayer(p);
@@ -419,8 +420,11 @@ function startBot(p, rounds = DEFAULT_ROUNDS, opts = {}) {
 function showStats(p) {
   const s = stats(p);
   const earned = Object.keys(state.achievements).filter(key => key.startsWith(p.id + ":")).map(key => key.split(":").slice(1).join(":"));
-  tell(p, "Статистика: победы " + s.wins + ", поражения " + s.losses + ", раунды " + s.rounds + ", кражи " + s.steals + ", сохранения " + s.kept + ".");
-  tell(p, "Достижения: " + (earned.length ? earned.join(", ") : "пока нет") + ".");
+  const title = s.wins >= 25 ? "Легенда доверия" : s.wins >= 10 ? "Мастер обмана" : s.wins >= 5 ? "Опытный игрок" : "Новичок";
+  new ActionFormData().title("Статистика и достижения")
+    .body("Звание: "+title+"\nПобеды: "+s.wins+"\nПоражения: "+s.losses+"\nРаунды: "+s.rounds+"\nКражи: "+s.steals+"\nСохранения: "+s.kept+"\n\nОткрыто: "+(earned.length?earned.join(", "):"пока нет"))
+    .button("Закрыть")
+    .show(p).catch(()=>tell(p,"Не удалось открыть достижения."));
 }
 function showLoot(p) {
   if (!inMatch(p)) return tell(p, "Ты не в матче. Награды уже находятся в инвентаре.");
@@ -641,6 +645,31 @@ world.afterEvents.playerLeave.subscribe(ev => {
   const p=match.players.find(x=>x?.id===ev.playerId);
   if (p) { announce(p.name+" отключился. Матч завершён."); returnEscrow(); cleanChest(); match=undefined; }
   queue=queue.filter(id=>id!==ev.playerId);
+});
+world.afterEvents.entityHurt.subscribe(ev => {
+  if (!match || match.phase !== "mob_fight" || ev.hurtEntity.id !== match.finalMobId) return;
+  try {
+    const mob=ev.hurtEntity, health=mob.getComponent("minecraft:health");
+    if (!health) return;
+    const ratio=health.currentValue/health.effectiveMax;
+    if (ratio <= 0.66 && (match.bossPhase ?? 1) < 2) {
+      match.bossPhase=2;
+      mob.addEffect("strength",20*60*5,{amplifier:2,showParticles:true});
+      mob.addEffect("speed",20*60*5,{amplifier:1,showParticles:true});
+      mob.dimension.spawnEntity("minecraft:blaze",{x:mob.location.x+2,y:mob.location.y,z:mob.location.z});
+      mob.dimension.spawnEntity("minecraft:skeleton",{x:mob.location.x-2,y:mob.location.y,z:mob.location.z});
+      announce("§cФаза босса II: он усилился и призвал стражей!");
+    }
+    if (ratio <= 0.33 && (match.bossPhase ?? 1) < 3) {
+      match.bossPhase=3;
+      mob.addEffect("strength",20*60*5,{amplifier:3,showParticles:true});
+      mob.addEffect("resistance",20*60*5,{amplifier:2,showParticles:true});
+      mob.addEffect("speed",20*60*5,{amplifier:2,showParticles:true});
+      mob.dimension.spawnEntity("minecraft:ravager",{x:mob.location.x+3,y:mob.location.y,z:mob.location.z+2});
+      mob.dimension.spawnEntity("minecraft:evoker",{x:mob.location.x-3,y:mob.location.y,z:mob.location.z-2});
+      announce("§4Фаза босса III: последняя ярость! Появились новые противники.");
+    }
+  } catch {}
 });
 world.afterEvents.entityDie.subscribe(ev => {
   if (!match) return;
