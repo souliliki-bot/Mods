@@ -10,6 +10,16 @@ final class ItemClassifier {
     private ItemClassifier() {
     }
 
+    static boolean isDecorativeBlockPath(String itemPath) {
+        String path = itemPath.toLowerCase(Locale.ROOT);
+        return containsAny(path, "stairs", "slab", "fence", "fence_gate", "wall", "door",
+            "trapdoor", "button", "pressure_plate", "carpet", "banner", "sign", "torch",
+            "lantern", "flower", "sapling", "leaves", "planks", "wool", "concrete",
+            "terracotta", "glass", "pane", "candle", "flower_pot", "skull", "head",
+            "coral", "mushroom", "azalea", "vine", "lily_pad", "bookshelf", "decorative",
+            "ornament", "chiseled_bookshelf", "hanging_sign");
+    }
+
     static ChestClass classify(String itemPath) {
         String path = itemPath.toLowerCase(Locale.ROOT);
 
