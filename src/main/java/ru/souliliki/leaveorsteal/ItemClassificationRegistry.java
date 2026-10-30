@@ -38,7 +38,11 @@ public final class ItemClassificationRegistry {
         if (itemId == null || chestClass == null) {
             throw new IllegalArgumentException("itemId and chestClass must not be null");
         }
-        itemRules.put(itemId, chestClass);
+        ChestClass previous = itemRules.put(itemId, chestClass);
+        if (previous != null && previous != chestClass) {
+            LOGGER.warn("Несколько интеграций назначили разные классы предмету {}: {} заменён на {}",
+                itemId, previous, chestClass);
+        }
     }
 
     /**
@@ -47,10 +51,10 @@ public final class ItemClassificationRegistry {
      */
     public synchronized void registerNamespace(String namespace,
                                                 Function<Identifier, ChestClass> classifier) {
-        if (namespace == null || namespace.isBlank() || classifier == null) {
-            throw new IllegalArgumentException("namespace and classifier must not be blank/null");
+        if (namespace == null || !namespace.matches("[a-z0-9_.-]+") || classifier == null) {
+            throw new IllegalArgumentException("namespace must contain only lowercase letters, digits, '_', '.', '-' and classifier must not be null");
         }
-        namespaceRules.computeIfAbsent(namespace.toLowerCase(Locale.ROOT), ignored -> new ArrayList<>()).add(classifier);
+        namespaceRules.computeIfAbsent(namespace, ignored -> new ArrayList<>()).add(classifier);
     }
 
     synchronized void reloadProviders() {
