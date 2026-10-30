@@ -47,6 +47,7 @@ public final class MatchManager {
     private boolean restoreHealthEnabled = true;
     private boolean restoreHungerEnabled = true;
     private int roundsPerMatch = 9;
+    private boolean nextFirstPlayerChooses = true;
 
     public static MatchManager get() { return INSTANCE; }
 
@@ -59,6 +60,7 @@ public final class MatchManager {
             restoreHealthEnabled = !root.has("restoreHealth") || root.get("restoreHealth").getAsBoolean();
             restoreHungerEnabled = !root.has("restoreHunger") || root.get("restoreHunger").getAsBoolean();
             roundsPerMatch = root.has("roundsPerMatch") ? Math.max(1, Math.min(30, root.get("roundsPerMatch").getAsInt())) : 9;
+            nextFirstPlayerChooses = !root.has("nextFirstPlayerChooses") || root.get("nextFirstPlayerChooses").getAsBoolean();
         } catch (Exception exception) {
             LeaveOrStealMod.LOGGER.error("Не удалось загрузить настройки мода", exception);
         }
@@ -71,6 +73,7 @@ public final class MatchManager {
         root.addProperty("restoreHealth", restoreHealthEnabled);
         root.addProperty("restoreHunger", restoreHungerEnabled);
         root.addProperty("roundsPerMatch", roundsPerMatch);
+        root.addProperty("nextFirstPlayerChooses", nextFirstPlayerChooses);
         try {
             Files.createDirectories(settingsFile.getParent());
             try (var writer = Files.newBufferedWriter(settingsFile)) { GSON.toJson(root, writer); }
@@ -139,6 +142,7 @@ public final class MatchManager {
         invitations.remove(target.getUuid());
         lobbies.remove(host.getUuid());
         Match match = new Match(host.getUuid(), target.getUuid(), roundsPerMatch);
+        configureFirstChooser(match);
         matches.put(host.getUuid(), match);
         matches.put(target.getUuid(), match);
         teleportMatchToArena(target.getServer(), match);
@@ -426,6 +430,7 @@ public final class MatchManager {
                 continue;
             }
             Match match = new Match(a, b, roundsPerMatch);
+            configureFirstChooser(match);
             matches.put(a, match);
             matches.put(b, match);
             teleportMatchToArena(server, match);
@@ -433,6 +438,24 @@ public final class MatchManager {
             first.sendMessage(Text.literal("§6Матч начался! Всего " + match.totalRounds + " раундов."), false);
             second.sendMessage(Text.literal("§6Матч начался! Всего " + match.totalRounds + " раундов."), false);
         }
+    }
+
+    private void configureFirstChooser(Match match) {
+        // Первая сторона пары выбирает в первой игре; в следующей — вторая.
+        match.owner = nextFirstPlayerChooses ? match.second : match.first;
+        nextFirstPlayerChooses = !nextFirstPlayerChooses;
+        saveSettings();
+    }
+
+    private void sendDecisionButtons(ServerPlayerEntity chooser, String statement) {
+        if (chooser == null) return;
+        chooser.sendMessage(Text.literal("§eСоперник говорит: §f" + statement), false);
+        MutableText buttons = Text.literal("§6Твой выбор: ");
+        buttons.append(Text.literal("§c[Украсть]").styled(style -> style
+            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal steal"))));
+        buttons.append(Text.literal(" §a[Оставить]").styled(style -> style
+            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal keep"))));
+        chooser.sendMessage(buttons, false);
     }
 
     private void beginRound(MinecraftServer server, Match match) {
@@ -461,8 +484,10 @@ public final class MatchManager {
         if (match.botOpponent && match.owner.equals(match.second)) {
             match.claim = "Я нашёл кое-что интересное. Думаю, тебе стоит решить, доверяешь ли ты мне.";
             match.phase = Phase.DECISION;
-            if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds +
-                ". Бот выбрал предмет и говорит: §f" + match.claim + " §6Реши: /leaveorsteal keep или /leaveorsteal steal."), false);
+            if (chooser != null) {
+                chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Бот выбрал предмет."), false);
+                sendDecisionButtons(chooser, match.claim);
+            }
             return;
         }
         if (owner != null) {
@@ -520,8 +545,7 @@ public final class MatchManager {
             return;
         }
         ServerPlayerEntity opponent = player.getServer().getPlayerManager().getPlayer(match.other(player.getUuid()));
-        if (opponent != null) opponent.sendMessage(Text.literal("§eСоперник говорит: §f" + statement +
-            "\n§6Выбери: /leaveorsteal keep или /leaveorsteal steal"), false);
+        if (opponent != null) sendDecisionButtons(opponent, statement);
         player.sendMessage(Text.literal("§aЗаявление отправлено. Ждём решения соперника."), false);
     }
 
