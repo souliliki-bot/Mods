@@ -1,6 +1,7 @@
 package ru.souliliki.leaveorsteal;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -56,7 +57,7 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, inspect <namespace:item>, items <namespace>, reloadconfig."
+                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
@@ -81,6 +82,20 @@ public class LeaveOrStealMod implements ModInitializer {
                         MatchManager.get().toggleSetting(context.getSource().getPlayer(), "hunger");
                         return 1;
                     })))
+                .then(CommandManager.literal("weight").requires(source -> source.hasPermissionLevel(2))
+                    .then(CommandManager.argument("name", StringArgumentType.word())
+                        .suggests((context, builder) -> {
+                            for (ChestClass chestClass : ChestClass.values()) builder.suggest(chestClass.name().toLowerCase(Locale.ROOT));
+                            return builder.buildFuture();
+                        })
+                        .then(CommandManager.argument("value", IntegerArgumentType.integer(0, 100000))
+                            .executes(context -> {
+                                if (context.getSource().getPlayer() == null) return 0;
+                                MatchManager.get().setClassWeight(context.getSource().getPlayer(),
+                                    StringArgumentType.getString(context, "name"),
+                                    IntegerArgumentType.getInteger(context, "value"));
+                                return 1;
+                            }))))
                 .then(CommandManager.literal("class").requires(source -> source.hasPermissionLevel(2))
                     .then(CommandManager.argument("name", StringArgumentType.word()).suggests((context, builder) -> {
                         for (ChestClass chestClass : ChestClass.values()) builder.suggest(chestClass.name().toLowerCase(Locale.ROOT));
