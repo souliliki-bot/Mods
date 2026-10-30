@@ -242,14 +242,16 @@ function resolveChoice(choice, chooser) {
   } else if (match.players[match.chooserIndex]?.id !== chooser.id) return tell(chooser, "Сейчас решение принимает другой игрок.");
   const owner = match.players[match.ownerIndex];
   const stolen = choice === "steal" && !match.shieldUsed;
-  const winner = stolen ? chooser : owner;
+  const effectiveChooser = match.bot && match.ownerIndex === 0 ? undefined : chooser;
+  const effectiveOwner = match.bot && match.ownerIndex === 1 ? undefined : owner;
+  const winner = stolen ? effectiveChooser : effectiveOwner;
   const amount = (match.highStakes ? 2 : 1) * (match.doubleReward ? 2 : 1);
   if (winner) {
     give(winner, match.reward.typeId, amount);
     match.earnedItems ??= [];
     match.earnedItems.push(match.reward.typeId);
   }
-  if (stolen && !match.bot) stat(chooser, "steals");
+  if (stolen && (!match.bot || match.ownerIndex === 1)) stat(chooser, "steals");
   else if ((!stolen || match.shieldUsed) && owner) stat(owner, "kept");
   for (const p of match.players) if (p) stat(p, "rounds");
   announce(match.bot
