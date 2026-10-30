@@ -831,7 +831,8 @@ public final class MatchManager {
         Match match = matches.get(player.getUuid());
         if (match == null || match.phase == Phase.DUEL || match.phase == Phase.FINISHED ||
             match.trapChestPos == null || !match.trapChestPos.equals(pos) ||
-            match.trapChestWorld != player.getServerWorld() || match.trapChestOpened) return false;
+            match.trapChestWorld != player.getServerWorld()) return false;
+        if (match.trapChestOpened) return true;
 
         match.trapChestOpened = true;
         match.trapChestCleanupTicks = 24;
@@ -888,6 +889,13 @@ public final class MatchManager {
         match.trapChestOriginalState = null;
         match.trapChestOpened = false;
         match.trapChestCleanupTicks = 0;
+    }
+
+    public synchronized boolean isTrapChest(net.minecraft.world.World world, BlockPos pos) {
+        for (Match match : new HashSet<>(matches.values())) {
+            if (match.trapChestWorld == world && pos.equals(match.trapChestPos)) return true;
+        }
+        return false;
     }
 
     public synchronized void tick(MinecraftServer server) {
