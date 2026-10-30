@@ -637,8 +637,8 @@ public final class MatchManager {
         mob.setCanPickUpLoot(false);
         mob.setCustomName(Text.literal("Соперник: " + mob.getName().getString()));
         mob.setCustomNameVisible(true);
-        mob.setTarget(player);
-        for (EquipmentSlot slot : EquipmentSlot.values()) mob.setEquipmentDropChance(slot, 0.0F);
+        mob.setAiDisabled(true);
+        mob.setTarget(null);
 
         List<ItemStack> earned = match.items.get(match.second);
         ItemStack bestWeapon = ItemStack.EMPTY;
@@ -668,6 +668,9 @@ public final class MatchManager {
         }
         bestArmor.forEach(mob::equipStack);
         if (!bestWeapon.isEmpty()) mob.equipStack(EquipmentSlot.MAINHAND, bestWeapon.copy());
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            if (!mob.getEquippedStack(slot).isEmpty()) mob.setEquipmentDropChance(slot, 1.0F);
+        }
 
         if (!world.spawnEntity(mob)) {
             mob.discard();
@@ -675,7 +678,39 @@ public final class MatchManager {
             return;
         }
         match.duelMob = mob;
-        mob.setTarget(player);
+        player.sendMessage(Text.literal("§eПодойди к сопернику и нажми ПКМ, чтобы выбрать: уйти или сразиться."), false);
+    }
+
+    public synchronized boolean showMobMenu(ServerPlayerEntity player, MobEntity mob) {
+        Match match = matches.get(player.getUuid());
+        if (match == null || !match.botOpponent || match.phase != Phase.DUEL ||
+            match.duelMob == null || !match.duelMob.getUuid().equals(mob.getUuid()) || !mob.isAlive()) {
+            return false;
+        }
+        MutableText menu = Text.literal("§6§lСоперник: §f" + mob.getName().getString() + " §7— выбери действие: ");
+        menu.append(Text.literal("§c[Уйти]").styled(style ->
+            style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal mob leave"))));
+        menu.append(Text.literal(" §a[Сразиться]").styled(style ->
+            style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal mob fight"))));
+        player.sendMessage(menu, false);
+        return true;
+    }
+
+    public synchronized void chooseMobAction(ServerPlayerEntity player, boolean fight) {
+        Match match = matches.get(player.getUuid());
+        if (match == null || !match.botOpponent || match.phase != Phase.DUEL ||
+            match.duelMob == null || !match.duelMob.isAlive()) {
+            player.sendMessage(Text.literal("§cСейчас нет активного моба-соперника."), false);
+            return;
+        }
+        if (!fight) {
+            player.sendMessage(Text.literal("§eТы решил уйти от боя. Матч завершён поражением."), false);
+            finishDuel(player.getServer(), match, match.second, "§7Игрок отказался от сражения.");
+            return;
+        }
+        match.duelMob.setAiDisabled(false);
+        match.duelMob.setTarget(player);
+        player.sendMessage(Text.literal("§cБой начался! Победи моба, чтобы завершить матч."), false);
     }
 
     private boolean isCombatWeapon(String path) {
@@ -803,6 +838,8 @@ public final class MatchManager {
             if (participant == null) continue;
             if (id.equals(winner)) {
                 participant.sendMessage(Text.literal(winnerMessage), false);
+            } else if (match.botOpponent && id.equals(match.first) && winner.equals(match.second)) {
+                participant.sendMessage(Text.literal("§cТы отказался от сражения и покинул арену."), false);
             } else {
                 participant.sendMessage(Text.literal("§cТы проиграл финальную PvP-дуэль."), false);
             }
