@@ -555,7 +555,11 @@ public final class MatchManager {
             if (match.botOpponent) {
                 spawnBotOpponent(server, match);
                 distributeItems(server, match);
-                notifyBoth(server, match, "§dРаунды завершены! Против тебя вышел моб-противник, экипированный добытыми предметами. Победи его в бою!");
+                if (match.duelMob != null && match.duelMob.isAlive()) {
+                    notifyBoth(server, match, "§dРаунды завершены! Против тебя вышел моб-противник: §f" +
+                        match.duelMob.getName().getString() +
+                        "§d. Он экипирован добытыми предметами — победи его в бою!");
+                }
             } else {
                 distributeItems(server, match);
                 notifyBoth(server, match,
