@@ -7,8 +7,10 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.util.ActionResult;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.text.Text;
@@ -42,6 +44,15 @@ public class LeaveOrStealMod implements ModInitializer {
             MatchManager.get().loadSettings(server);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> MatchManager.get().saveOnShutdown(server));
+        ServerTickEvents.END_SERVER_TICK.register(server -> MatchManager.get().tick(server));
+
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (!world.isClient && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer &&
+                MatchManager.get().openTrapChest(serverPlayer, hitResult.getBlockPos())) {
+                return ActionResult.SUCCESS;
+            }
+            return ActionResult.PASS;
+        });
 
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (!world.isClient && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer &&
