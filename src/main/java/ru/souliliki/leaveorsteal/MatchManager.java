@@ -4,6 +4,10 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.world.World;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -26,9 +30,54 @@ public final class MatchManager {
     private final Random random = new Random();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private Path rewardsFile;
+    private Path arenaFile;
+    private ArenaPoint arenaFirst;
+    private ArenaPoint arenaSecond;
 
     public static MatchManager get() { return INSTANCE; }
 
+    public synchronized void loadArena(MinecraftServer server) {
+        arenaFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-arena.json");
+        if (!Files.exists(arenaFile)) return;
+        try (var reader = Files.newBufferedReader(arenaFile)) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            arenaFirst = readArenaPoint(root, "first");
+            arenaSecond = readArenaPoint(root, "second");
+        } catch (Exception exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось загрузить точки PvP-арены", exception);
+        }
+    }
+
+    private ArenaPoint readArenaPoint(JsonObject root, String key) {
+        if (!root.has(key) || !root.get(key).isJsonObject()) return null;
+        JsonObject point = root.getAsJsonObject(key);
+        return new ArenaPoint(point.get("dimension").getAsString(), point.get("x").getAsDouble(),
+            point.get("y").getAsDouble(), point.get("z").getAsDouble(),
+            point.get("yaw").getAsFloat(), point.get("pitch").getAsFloat());
+    }
+
+    private synchronized void saveArena() {
+        if (arenaFile == null) return;
+        JsonObject root = new JsonObject();
+        if (arenaFirst != null) root.add("first", arenaFirst.toJson());
+        if (arenaSecond != null) root.add("second", arenaSecond.toJson());
+        try {
+            Files.createDirectories(arenaFile.getParent());
+            try (var writer = Files.newBufferedWriter(arenaFile)) { GSON.toJson(root, writer); }
+        } catch (IOException exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось сохранить точки PvP-арены", exception);
+        }
+    }
+
+    public synchronized void setArenaPoint(ServerPlayerEntity player, boolean first) {
+        ArenaPoint point = new ArenaPoint(player.getWorld().getRegistryKey().getValue().toString(),
+            player.getX(), player.getY(), player.getZ(), player.getYaw(), player.getPitch());
+        if (first) arenaFirst = point; else arenaSecond = point;
+        arenaFile = player.getServer().getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-arena.json");
+        saveArena();
+        player.sendMessage(Text.literal(first ? "§aТочка арены для первого игрока сохранена." :
+            "§aТочка арены для второго игрока сохранена."), false);
+    }
     public synchronized void loadRewards(MinecraftServer server) {
         pendingRewards.clear();
         rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
@@ -234,14 +283,37 @@ public final class MatchManager {
         if (match.round > 9) {
             match.phase = Phase.DUEL;
             distributeItems(player.getServer(), match);
+            teleportToArena(player.getServer(), match);
             notifyBoth(player.getServer(), match,
-                "§d9 раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль: победит тот, кто победит соперника. Команда /leave означает сдачу.");
+                "§d9 раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль. Команда /leave означает сдачу.");
         } else {
             match.owner = match.other(previousOwner);
             beginRound(player.getServer(), match);
         }
     }
 
+    private void teleportToArena(MinecraftServer server, Match match) {
+        if (arenaFirst == null || arenaSecond == null) {
+            notifyBoth(server, match, "§eТочки арены не настроены: бой начнётся на текущем месте. Используй /leaveorsteal setarena1 и setarena2.");
+            return;
+        }
+        ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
+        ServerPlayerEntity second = server.getPlayerManager().getPlayer(match.second);
+        if (first != null) teleport(first, arenaFirst);
+        if (second != null) teleport(second, arenaSecond);
+    }
+
+    private void teleport(ServerPlayerEntity player, ArenaPoint point) {
+        Identifier dimensionId = Identifier.tryParse(point.dimension);
+        if (dimensionId == null) return;
+        RegistryKey<World> dimensionKey = RegistryKey.of(RegistryKeys.WORLD, dimensionId);
+        ServerWorld world = player.getServer().getWorld(dimensionKey);
+        if (world == null) {
+            player.sendMessage(Text.literal("§cМир арены не найден: " + point.dimension), false);
+            return;
+        }
+        player.teleport(world, point.x, point.y, point.z, point.yaw, point.pitch);
+    }
     private void distributeItems(MinecraftServer server, Match match) {
         for (UUID id : List.of(match.first, match.second)) {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
@@ -344,6 +416,20 @@ public final class MatchManager {
         }
     }
 
+    private static final class ArenaPoint {
+        final String dimension;
+        final double x, y, z;
+        final float yaw, pitch;
+        ArenaPoint(String dimension, double x, double y, double z, float yaw, float pitch) {
+            this.dimension = dimension; this.x = x; this.y = y; this.z = z; this.yaw = yaw; this.pitch = pitch;
+        }
+        JsonObject toJson() {
+            JsonObject json = new JsonObject();
+            json.addProperty("dimension", dimension); json.addProperty("x", x); json.addProperty("y", y);
+            json.addProperty("z", z); json.addProperty("yaw", yaw); json.addProperty("pitch", pitch);
+            return json;
+        }
+    }
     private static final class Match {
         final UUID first, second;
         final Map<UUID, List<ItemStack>> items = new HashMap<>();
