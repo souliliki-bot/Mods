@@ -80,14 +80,23 @@ public final class MatchManager {
         if (rewardsFile == null) rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
         JsonObject root = new JsonObject();
         var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
-        for (var entry : pendingRewards.entrySet()) {
-            JsonArray array = new JsonArray();
-            for (ItemStack stack : entry.getValue()) {
-                ItemStack.CODEC.encodeStart(ops, stack).result().ifPresent(array::add);
-            }
-            if (!array.isEmpty()) root.add(entry.getKey().toString(), array);
-        }
         try {
+            for (var entry : pendingRewards.entrySet()) {
+                JsonArray array = new JsonArray();
+                for (ItemStack stack : entry.getValue()) {
+                    if (stack == null || stack.isEmpty()) continue;
+
+                    var encoded = ItemStack.CODEC.encodeStart(ops, stack).result();
+                    if (encoded.isEmpty()) {
+                        throw new IOException("Не удалось сериализовать награду " +
+                            stack.getItem() + " игрока " + entry.getKey() +
+                            ". Старый файл наград оставлен без изменений.");
+                    }
+                    array.add(encoded.get());
+                }
+                if (!array.isEmpty()) root.add(entry.getKey().toString(), array);
+            }
+
             Files.createDirectories(rewardsFile.getParent());
             Path temp = rewardsFile.resolveSibling(rewardsFile.getFileName() + ".tmp");
             try (var writer = Files.newBufferedWriter(temp)) { GSON.toJson(root, writer); }
