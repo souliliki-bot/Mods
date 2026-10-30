@@ -743,7 +743,8 @@ world.afterEvents.playerSpawn.subscribe(ev => {
         tell(ev.player,"Возвращена ставка незавершённого матча после перезапуска.");
       }, 40);
     }
-    system.runTimeout(()=>tell(ev.player,"Аддон загружен! Открой меню командой !los menu или напиши !los help."),30);
+    system.runTimeout(()=>tell(ev.player,"Аддон загружен! Открываю меню «Обман и доверие»."),30);
+    system.runTimeout(()=>showMenu(ev.player),60);
   }
 });
 system.runTimeout(()=>{ for (const p of players()) tell(p,"«Обман и доверие» загружен. !los menu — открыть меню."); },40);
