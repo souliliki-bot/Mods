@@ -50,6 +50,8 @@ public class LeaveOrStealMod implements ModInitializer {
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
             if (entity instanceof net.minecraft.server.network.ServerPlayerEntity player) {
                 MatchManager.get().onDeath(player);
+            } else if (entity instanceof net.minecraft.entity.mob.MobEntity mob) {
+                MatchManager.get().onMobDeath(mob);
             }
         });
 
