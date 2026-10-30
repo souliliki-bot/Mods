@@ -32,6 +32,7 @@ public class LeaveOrStealMod implements ModInitializer {
                 LOGGER.error("Не удалось загрузить конфигурацию пулов предметов", exception);
             }
             MatchManager.get().loadRewards(server);
+            MatchManager.get().loadArena(server);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> MatchManager.get().saveOnShutdown(server));
 
@@ -52,8 +53,18 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: join, claim <текст>, keep, steal, loot, status, leave (сдаться в дуэли), classes, pool, items <namespace>, reloadconfig."
+                        "Команды: join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, items <namespace>, reloadconfig."
                     ), false);
+                    return 1;
+                }))
+                .then(CommandManager.literal("setarena1").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().setArenaPoint(context.getSource().getPlayer(), true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("setarena2").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().setArenaPoint(context.getSource().getPlayer(), false);
                     return 1;
                 }))
                 .then(CommandManager.literal("join").executes(context -> {
