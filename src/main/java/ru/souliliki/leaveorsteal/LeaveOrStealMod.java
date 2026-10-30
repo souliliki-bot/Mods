@@ -33,6 +33,7 @@ public class LeaveOrStealMod implements ModInitializer {
             }
             MatchManager.get().loadRewards(server);
             MatchManager.get().loadArena(server);
+            MatchManager.get().loadSettings(server);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> MatchManager.get().saveOnShutdown(server));
 
@@ -53,10 +54,31 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, items <namespace>, reloadconfig."
+                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
+                .then(CommandManager.literal("settings").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().showSettings(context.getSource().getPlayer());
+                    return 1;
+                }))
+                .then(CommandManager.literal("setting").requires(source -> source.hasPermissionLevel(2))
+                    .then(CommandManager.literal("arena").executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().toggleSetting(context.getSource().getPlayer(), "arena");
+                        return 1;
+                    }))
+                    .then(CommandManager.literal("health").executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().toggleSetting(context.getSource().getPlayer(), "health");
+                        return 1;
+                    }))
+                    .then(CommandManager.literal("hunger").executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().toggleSetting(context.getSource().getPlayer(), "hunger");
+                        return 1;
+                    })))
                 .then(CommandManager.literal("setarena1").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
                     if (context.getSource().getPlayer() == null) return 0;
                     MatchManager.get().setArenaPoint(context.getSource().getPlayer(), true);
