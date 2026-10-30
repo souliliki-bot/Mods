@@ -19,6 +19,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build
         run: gradle build
+      - name: Smoke test Fabric dedicated server
+        shell: bash
+        run: |
+          mkdir -p run
+          printf 'eula=true\n' > run/eula.txt
+
+          gradle runServer --no-daemon > server.log 2>&1 &
+          gradle_pid=$!
+
+          for attempt in $(seq 1 90); do
+            if grep -q "Done (" server.log; then
+              echo "Fabric server reached the ready state."
+              pkill -f '[n]et.fabricmc.loader.impl.launch.knot.Knot' || true
+              kill "$gradle_pid" 2>/dev/null || true
+              wait "$gradle_pid" 2>/dev/null || true
+              exit 0
+            fi
+
+            if ! kill -0 "$gradle_pid" 2>/dev/null; then
+              wait "$gradle_pid"
+              result=$?
+              cat server.log
+              exit "$result"
+            fi
+
+            sleep 2
+          done
+
+          cat server.log
+          pkill -f '[n]et.fabricmc.loader.impl.launch.knot.Knot' || true
+          kill "$gradle_pid" 2>/dev/null || true
+          wait "$gradle_pid" 2>/dev/null || true
+          echo "Fabric server did not reach the ready state within 180 seconds."
+          exit 1
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
