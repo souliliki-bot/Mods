@@ -20,6 +20,10 @@ public final class LeaveOrStealClient implements ClientModInitializer {
             "category.leave_or_steal"
         ));
 
+        ClientPlayNetworking.registerGlobalReceiver(LobbyMenuPayload.ID, (payload, context) ->
+            context.client().execute(() -> context.client().setScreen(new LobbyScreen(payload.onlinePlayers())))
+        );
+
         ClientPlayNetworking.registerGlobalReceiver(SettingsSyncPayload.ID, (payload, context) ->
             context.client().execute(() -> context.client().setScreen(new SettingsScreen(
                 payload.arenaTeleport(), payload.restoreHealth(), payload.restoreHunger(), payload.roundsPerMatch(), payload.classWeights(), payload.enabledClasses()
@@ -29,7 +33,7 @@ public final class LeaveOrStealClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openSettingsKey.wasPressed()) {
                 if (client.getNetworkHandler() != null) {
-                    client.getNetworkHandler().sendChatCommand("leaveorsteal settings");
+                    client.getNetworkHandler().sendChatCommand("leaveorsteal menu");
                 }
             }
         });
