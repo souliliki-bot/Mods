@@ -299,22 +299,17 @@ public final class MatchManager {
         player.sendMessage(Text.literal("§aПеред дуэлью здоровье и сытость восстановлены. Твоя экипировка и эффекты не изменены."), false);
     }
     private void teleportToArena(MinecraftServer server, Match match) {
-        if (arenaFirst == null || arenaSecond == null) {
-            notifyBoth(server, match, "§eТочки арены не настроены: бой начнётся на текущем месте. Используй /leaveorsteal setarena1 и setarena2.");
-            return;
-        }
         ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
         ServerPlayerEntity second = server.getPlayerManager().getPlayer(match.second);
-        if (first != null) {
-            teleport(first, arenaFirst);
-            prepareForDuel(first);
+        if (arenaFirst == null || arenaSecond == null) {
+            notifyBoth(server, match, "§eТочки арены не настроены: бой начнётся на текущем месте. Используй /leaveorsteal setarena1 и setarena2.");
+        } else {
+            if (first != null) teleport(first, arenaFirst);
+            if (second != null) teleport(second, arenaSecond);
         }
-        if (second != null) {
-            teleport(second, arenaSecond);
-            prepareForDuel(second);
-        }
+        if (first != null) prepareForDuel(first);
+        if (second != null) prepareForDuel(second);
     }
-
     private void teleport(ServerPlayerEntity player, ArenaPoint point) {
         Identifier dimensionId = Identifier.tryParse(point.dimension);
         if (dimensionId == null) return;
