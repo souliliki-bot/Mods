@@ -19,25 +19,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and unit tests
         run: gradle build
+      - name: Set up Node.js for two-player integration test
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Minecraft protocol test client
+        run: npm install --no-save --no-package-lock mineflayer@4
       - name: Prepare integration test server
         run: |
           mkdir -p run/data
           printf 'eula=true\n' > run/eula.txt
           printf 'online-mode=false\npvp=true\nserver-port=25565\nmax-players=2\nspawn-protection=0\nview-distance=4\nsimulation-distance=4\n' > run/server.properties
           printf '{"arenaTeleport":false,"restoreHealth":true,"restoreHunger":true,"roundsPerMatch":1}\n' > run/data/leave-or-steal-settings.json
-      - name: Smoke test Fabric dedicated server
+      - name: Smoke test server and a complete two-player match
         shell: bash
         run: |
-
           gradle runServer --no-daemon > server.log 2>&1 &
           gradle_pid=$!
+
+          cleanup() {
+            pkill -f '[n]et.fabricmc.loader.impl.launch.knot.Knot' || true
+            kill "$gradle_pid" 2>/dev/null || true
+            wait "$gradle_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
 
           for attempt in $(seq 1 90); do
             if grep -q "Done (" server.log; then
               echo "Fabric server reached the ready state."
-              pkill -f '[n]et.fabricmc.loader.impl.launch.knot.Knot' || true
-              kill "$gradle_pid" 2>/dev/null || true
-              wait "$gradle_pid" 2>/dev/null || true
+              node scripts/match-smoke-test.mjs
+              result=$?
+              if [ "$result" -ne 0 ]; then
+                cat server.log
+                exit "$result"
+              fi
               exit 0
             fi
 
@@ -52,21 +67,8 @@ jobs:
           done
 
           cat server.log
-          pkill -f '[n]et.fabricmc.loader.impl.launch.knot.Knot' || true
-          kill "$gradle_pid" 2>/dev/null || true
-          wait "$gradle_pid" 2>/dev/null || true
           echo "Fabric server did not reach the ready state within 180 seconds."
           exit 1
-      - name: Set up Node.js for two-player integration test
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Install Minecraft protocol test client
-        run: npm install --no-save --no-package-lock mineflayer@4
-      - name: Run automated two-player match
-        shell: bash
-        run: |
-          node scripts/match-smoke-test.mjs
       - name: Install headless graphics dependencies
         run: |
           sudo apt-get update
