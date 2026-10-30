@@ -451,6 +451,13 @@ public final class MatchManager {
 
         ServerPlayerEntity owner = server.getPlayerManager().getPlayer(match.owner);
         ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(match.other(match.owner));
+        if (match.botOpponent && match.owner.equals(match.second)) {
+            match.claim = "Я нашёл кое-что интересное. Думаю, тебе стоит решить, доверяешь ли ты мне.";
+            match.phase = Phase.DECISION;
+            if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds +
+                ". Бот выбрал предмет и говорит: §f" + match.claim + " §6Реши: /leaveorsteal keep или /leaveorsteal steal."), false);
+            return;
+        }
         if (owner != null) {
             String ammoNote = match.roundBonusItems.isEmpty() ? "" : " §7Дополнительно получишь боеприпасы: " +
                 match.roundBonusItems.stream().map(stack -> stack.getCount() + "x " + stack.getName().getString())
@@ -499,6 +506,12 @@ public final class MatchManager {
         }
         match.claim = statement;
         match.phase = Phase.DECISION;
+        if (match.botOpponent && match.other(player.getUuid()).equals(match.second)) {
+            boolean botSteals = random.nextInt(100) < 32;
+            player.sendMessage(Text.literal(botSteals ? "§cБот решил украсть предмет." : "§aБот поверил тебе и оставил предмет."), false);
+            resolveDecision(player.getServer(), match, match.second, botSteals);
+            return;
+        }
         ServerPlayerEntity opponent = player.getServer().getPlayerManager().getPlayer(match.other(player.getUuid()));
         if (opponent != null) opponent.sendMessage(Text.literal("§eСоперник говорит: §f" + statement +
             "\n§6Выбери: /leaveorsteal keep или /leaveorsteal steal"), false);
@@ -512,29 +525,43 @@ public final class MatchManager {
             player.sendMessage(Text.literal("§cСейчас решение недоступно."), false);
             return;
         }
+        resolveDecision(player.getServer(), match, player.getUuid(), steal);
+    }
 
+    private void resolveDecision(MinecraftServer server, Match match, UUID chooser, boolean steal) {
         UUID previousOwner = match.owner;
-        UUID winner = steal ? player.getUuid() : previousOwner;
+        UUID winner = steal ? chooser : previousOwner;
         match.items.get(winner).add(match.roundItem.copy());
         for (ItemStack ammo : match.roundBonusItems) match.items.get(winner).add(ammo.copy());
         match.roundBonusItems.clear();
 
-        ServerPlayerEntity owner = player.getServer().getPlayerManager().getPlayer(previousOwner);
+        ServerPlayerEntity owner = server.getPlayerManager().getPlayer(previousOwner);
         if (owner != null) owner.sendMessage(Text.literal(steal ? "§cСоперник украл предмет этого раунда." :
             "§aСоперник оставил предмет тебе."), false);
-        player.sendMessage(Text.literal(steal ? "§6Ты забрал предмет этого раунда." : "§6Ты оставил предмет сопернику."), false);
+        ServerPlayerEntity chooserPlayer = server.getPlayerManager().getPlayer(chooser);
+        if (chooserPlayer != null && !chooser.equals(previousOwner)) {
+            chooserPlayer.sendMessage(Text.literal(steal ? "§6Ты забрал предмет этого раунда." : "§6Ты оставил предмет сопернику."), false);
+        }
 
         match.round++;
         match.roundItem = ItemStack.EMPTY;
         if (match.round > match.totalRounds) {
             match.phase = Phase.DUEL;
-            distributeItems(player.getServer(), match);
-            teleportToArena(player.getServer(), match);
-            notifyBoth(player.getServer(), match,
-                "§d" + match.totalRounds + " раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль. Команда /leave означает сдачу.");
+            distributeItems(server, match);
+            teleportToArena(server, match);
+            if (match.botOpponent) {
+                boolean humanWins = random.nextInt(100) < 65;
+                UUID winnerId = humanWins ? match.first : match.second;
+                finishDuel(server, match, winnerId, humanWins
+                    ? "§aТы победил ИИ-бота в финальной дуэли!"
+                    : "§cИИ-бот победил в финальной дуэли. Попробуй ещё раз!");
+            } else {
+                notifyBoth(server, match,
+                    "§d" + match.totalRounds + " раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль. Команда /leave означает сдачу.");
+            }
         } else {
             match.owner = match.other(previousOwner);
-            beginRound(player.getServer(), match);
+            beginRound(server, match);
         }
     }
 
@@ -573,6 +600,10 @@ public final class MatchManager {
     }
     private void distributeItems(MinecraftServer server, Match match) {
         for (UUID id : List.of(match.first, match.second)) {
+            if (match.botOpponent && id.equals(match.second)) {
+                match.items.get(id).clear();
+                continue;
+            }
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
             if (player == null) {
                 List<ItemStack> pending = pendingRewards.computeIfAbsent(id, ignored -> new ArrayList<>());
@@ -595,6 +626,9 @@ public final class MatchManager {
 
     public synchronized void onDisconnect(ServerPlayerEntity player) {
         queue.remove(player.getUuid());
+        lobbies.remove(player.getUuid());
+        invitations.remove(player.getUuid());
+        invitations.values().removeIf(host -> host.equals(player.getUuid()));
         Match match = matches.get(player.getUuid());
         if (match == null) return;
         if (match.phase == Phase.DUEL) {
@@ -670,6 +704,7 @@ public final class MatchManager {
 
     private void notifyBoth(MinecraftServer server, Match match, String message) {
         for (UUID id : List.of(match.first, match.second)) {
+            if (match.botOpponent && id.equals(match.second)) continue;
             ServerPlayerEntity p = server.getPlayerManager().getPlayer(id);
             if (p != null) p.sendMessage(Text.literal(message), false);
         }
@@ -689,8 +724,15 @@ public final class MatchManager {
             return json;
         }
     }
+    private static final class Lobby {
+        final UUID host;
+        UUID invited;
+        Lobby(UUID host) { this.host = host; }
+    }
+
     private static final class Match {
         final UUID first, second;
+        boolean botOpponent;
         final Map<UUID, List<ItemStack>> items = new HashMap<>();
         final int totalRounds;
         UUID owner;
