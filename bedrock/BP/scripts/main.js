@@ -1,4 +1,4 @@
-import { world, system, ItemStack } from "@minecraft/server";
+import { world, system, ItemStack, ItemTypes } from "@minecraft/server";
 import { ActionFormData, ModalFormData } from "@minecraft/server-ui";
 
 const PREFIX = "§6[Обман и доверие]§r ";
@@ -24,12 +24,12 @@ let chestData;
 let chestCooldown = 0;
 
 function loadState() {
-  const fallback = { stats: {}, settings: { rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
+  const fallback = { stats: {}, settings: { itemOverrides: {}, rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
   try {
     const raw = world.getDynamicProperty(STORAGE);
     if (!raw || typeof raw !== "string") return fallback;
     const parsed = JSON.parse(raw);
-    return { ...fallback, ...parsed, settings: { ...fallback.settings, ...(parsed.settings ?? {}) }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) }, pendingEscrow: parsed.pendingEscrow ?? {} };
+    return { ...fallback, ...parsed, settings: { ...fallback.settings, ...(parsed.settings ?? {}), itemOverrides: { ...(fallback.settings.itemOverrides ?? {}), ...(parsed.settings?.itemOverrides ?? {}) } }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) }, pendingEscrow: parsed.pendingEscrow ?? {} };
   } catch { return fallback; }
 }
 function saveState() { try { world.setDynamicProperty(STORAGE, JSON.stringify(state)); } catch {} }
@@ -96,9 +96,32 @@ function weightedClass() {
   for (const c of enabled) { pick -= state.settings.weights[c]; if (pick <= 0) return c; }
   return enabled[0];
 }
+function classifyItem(id) {
+  const override = state.settings.itemOverrides?.[id];
+  if (override && CLASSES.includes(override)) return override;
+  const path = id.split(":").pop().toLowerCase();
+  const excluded = ["stairs","slab","fence","fence_gate","door","trapdoor","carpet","banner","torch","lantern","flower","glass","wool","concrete","terracotta","pane","button","pressure_plate","sign","sapling","leaves","planks","log","wall","candle","coral","pot"];
+  if (excluded.some(word => path.includes(word))) return null;
+  if (/netherite.*(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots)/.test(path)) return "NETHERITE_GEAR";
+  if (/diamond.*(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots)/.test(path)) return "DIAMOND_GEAR";
+  if (/iron.*(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots)/.test(path)) return "IRON_GEAR";
+  if (/(potion|stew|soup|bread|apple|carrot|potato|beef|pork|chicken|mutton|fish|salmon|cod|cookie|cake|pie|honey|milk|golden_carrot)/.test(path)) return "POTIONS_FOOD";
+  if (/(elytra|totem|trident|nether_star|heart_of_the_sea|conduit|shulker_shell|echo_shard|dragon_breath)/.test(path)) return "RARE";
+  if (/(netherite_ingot|beacon|heavy_core|enchanted_golden_apple|unique|legendary)/.test(path)) return "LEGENDARY";
+  if (/(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots|bow|crossbow|shield)/.test(path)) return "IRON_GEAR";
+  return "COMMON";
+}
+function getItemPool(className) {
+  try {
+    const all = ItemTypes.getAll().map(item => item.id);
+    const filtered = all.filter(id => classifyItem(id) === className);
+    if (filtered.length) return filtered;
+  } catch {}
+  return POOLS[className] ?? POOLS.COMMON;
+}
 function chooseItem(className) {
-  const pool = POOLS[className] ?? POOLS.COMMON;
-  for (let i = 0; i < 12; i++) {
+  const pool = getItemPool(className);
+  for (let i = 0; i < Math.min(24, pool.length); i++) {
     const id = pool[Math.floor(Math.random() * pool.length)];
     try { return new ItemStack(id); } catch {}
   }
@@ -385,7 +408,9 @@ function startBot(p, rounds = DEFAULT_ROUNDS, opts = {}) {
 }
 function showStats(p) {
   const s = stats(p);
+  const earned = Object.keys(state.achievements).filter(key => key.startsWith(p.id + ":")).map(key => key.split(":").slice(1).join(":"));
   tell(p, "Статистика: победы " + s.wins + ", поражения " + s.losses + ", раунды " + s.rounds + ", кражи " + s.steals + ", сохранения " + s.kept + ".");
+  tell(p, "Достижения: " + (earned.length ? earned.join(", ") : "пока нет") + ".");
 }
 function showLoot(p) {
   if (!inMatch(p)) return tell(p, "Ты не в матче. Награды уже находятся в инвентаре.");
