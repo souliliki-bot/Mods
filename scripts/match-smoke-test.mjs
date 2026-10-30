@@ -51,6 +51,35 @@ function waitForSpawn(bot, username) {
   });
 }
 
+async function waitForRoundParticipants(first, second, round, label) {
+  const ownerPredicate = message =>
+    message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет');
+  const chooserPredicate = message =>
+    message.includes(`Раунд ${round}/9`) && message.includes('Соперник выбирает предмет');
+
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const timer = setInterval(() => {
+      const firstHistory = histories.get(first);
+      const secondHistory = histories.get(second);
+      const firstOwner = firstHistory.find(ownerPredicate);
+      const secondOwner = secondHistory.find(ownerPredicate);
+      const firstChooser = firstHistory.find(chooserPredicate);
+      const secondChooser = secondHistory.find(chooserPredicate);
+
+      if (firstOwner && secondChooser) {
+        clearInterval(timer);
+        resolve({ owner: first, chooser: second });
+      } else if (secondOwner && firstChooser) {
+        clearInterval(timer);
+        resolve({ owner: second, chooser: first });
+      } else if (Date.now() - started > 45000) {
+        clearInterval(timer);
+        reject(new Error(`Timed out identifying round ${round} roles for ${label}. A: ${firstHistory.slice(-8).join(' | ')}. B: ${secondHistory.slice(-8).join(' | ')}`));
+      }
+    }, 200);
+  });
+}
 async function playNineRounds(first, second, decisions, label, joinQueue = true) {
   if (joinQueue) {
     first.chat('/leaveorsteal join');
@@ -61,13 +90,7 @@ async function playNineRounds(first, second, decisions, label, joinQueue = true)
   }
 
   for (let round = 1; round <= 9; round++) {
-    const owner = round % 2 === 1 ? first : second;
-    const chooser = round % 2 === 1 ? second : first;
-
-    await Promise.all([
-      waitFor(owner, message => message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет'), `${label}: round ${round} owner prompt`),
-      waitFor(chooser, message => message.includes(`Раунд ${round}/9`) && message.includes('Сам предмет пока скрыт'), `${label}: round ${round} chooser prompt`)
-    ]);
+    const { owner, chooser } = await waitForRoundParticipants(first, second, round, label);
 
     owner.chat(`/leaveorsteal claim ${label} заявление раунд ${round}`);
     await waitFor(chooser, message => message.includes(`${label} заявление раунд ${round}`), `${label}: round ${round} claim delivery`);
