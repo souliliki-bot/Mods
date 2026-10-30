@@ -282,17 +282,12 @@ public final class MatchManager {
     }
 
     private void beginRound(MinecraftServer server, Match match) {
-        List<Identifier> candidates = new ArrayList<>();
-        for (ChestClass chestClass : ChestClass.values()) {
-            candidates.addAll(ItemPoolRegistry.get().getItems(chestClass));
-        }
-        if (candidates.isEmpty()) {
-            notifyBoth(server, match, "§cПул предметов пуст. Проверь config/leave-or-steal.properties.");
-            finishMatch(server, match, "§cМатч завершён: пул предметов пуст.");
+        Identifier id = ItemPoolRegistry.get().getRandomItem(random);
+        if (id == null) {
+            notifyBoth(server, match, "§cНет доступных предметов с положительным весом. Проверь enabledClasses и weight.<КЛАСС> в config/leave-or-steal.properties.");
+            finishMatch(server, match, "§cМатч завершён: нет доступных предметов с положительным весом.");
             return;
         }
-
-        Identifier id = candidates.get(random.nextInt(candidates.size()));
         Item item = Registries.ITEM.get(id);
         if (item == null) {
             notifyBoth(server, match, "§cНе удалось создать предмет раунда. Матч завершён.");
