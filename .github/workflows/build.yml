@@ -30,7 +30,7 @@ jobs:
           mkdir -p run/world/data
           printf 'eula=true\n' > run/eula.txt
           printf 'online-mode=false\npvp=true\nserver-port=25565\nmax-players=2\nspawn-protection=0\nview-distance=4\nsimulation-distance=4\nlevel-name=world\n' > run/server.properties
-          printf '{"arenaTeleport":false,"restoreHealth":true,"restoreHunger":true,"roundsPerMatch":1}\n' > run/world/data/leave-or-steal-settings.json
+          printf '{"arenaTeleport":false,"restoreHealth":true,"restoreHunger":true,"roundsPerMatch":9}\n' > run/world/data/leave-or-steal-settings.json
       - name: Smoke test server and a complete two-player match
         shell: bash
         run: |
