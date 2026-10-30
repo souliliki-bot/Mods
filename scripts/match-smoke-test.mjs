@@ -115,10 +115,12 @@ async function main() {
       if (round % 2 === 1) {
         await waitFor(first, message => message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет'), `bot match round ${round} human item`);
         first.chat(`/leaveorsteal claim CI бот заявление раунд ${round}`);
+        await new Promise(resolve => setTimeout(resolve, 900));
         await waitFor(first, message => message.includes('Бот ') && (message.includes('украсть') || message.includes('поверил')), `bot decision in round ${round}`);
       } else {
         await waitFor(first, message => message.includes(`Раунд ${round}/9`) && message.includes('Бот выбрал предмет'), `bot item in round ${round}`);
         first.chat('/leaveorsteal keep');
+        await new Promise(resolve => setTimeout(resolve, 900));
       }
     }
     await waitFor(first, message => message.includes('победил ИИ-бота') || message.includes('проиграл финальную PvP-дуэль'), 'simulated bot duel result');
