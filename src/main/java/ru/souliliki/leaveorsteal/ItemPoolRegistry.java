@@ -82,45 +82,7 @@ public final class ItemPoolRegistry {
     }
 
     private ChestClass classifyByDefault(Identifier id, Item item) {
-        String path = id.getPath().toLowerCase(Locale.ROOT);
-
-        // Сначала распознаём еду и расходники, чтобы, например, golden_apple
-        // не попадало в класс снаряжения.
-        if (containsAny(path, "potion", "stew", "food", "apple", "bread", "meat",
-            "soup", "carrot", "potato", "berry", "fish", "cookie", "cake",
-            "pie", "cheese", "sausage")) {
-            return ChestClass.POTIONS_FOOD;
-        }
-
-        if (containsAny(path, "elytra", "totem", "nether_star", "dragon_egg", "beacon")) {
-            return ChestClass.LEGENDARY;
-        }
-        if (containsAny(path, "enchanted_golden_apple", "trident", "heavy_core", "shulker")) {
-            return ChestClass.RARE;
-        }
-
-        if (isGearName(path)) {
-            if (path.contains("netherite")) return ChestClass.NETHERITE_GEAR;
-            if (path.contains("diamond")) return ChestClass.DIAMOND_GEAR;
-            if (path.contains("iron")) return ChestClass.IRON_GEAR;
-        }
-
-        // Неизвестное модовое снаряжение остаётся COMMON, но не теряется из пула.
-        return ChestClass.COMMON;
-    }
-
-    private boolean isGearName(String path) {
-        return containsAny(path, "sword", "pickaxe", "axe", "shovel", "hoe",
-            "helmet", "chestplate", "leggings", "boots", "shield", "bow",
-            "crossbow", "dagger", "spear", "staff", "wand", "katana",
-            "scythe", "hammer", "mace", "greatsword", "battleaxe");
-    }
-
-    private boolean containsAny(String value, String... fragments) {
-        for (String fragment : fragments) {
-            if (value.contains(fragment)) return true;
-        }
-        return false;
+        return ItemClassifier.classify(id.getPath());
     }
 
     private Set<String> csv(String value) {
