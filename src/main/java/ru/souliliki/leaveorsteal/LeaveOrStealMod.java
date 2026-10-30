@@ -11,6 +11,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.minecraft.util.ActionResult;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.text.Text;
@@ -53,6 +54,9 @@ public class LeaveOrStealMod implements ModInitializer {
             }
             return ActionResult.PASS;
         });
+
+        PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) ->
+            !MatchManager.get().isTrapChest(world, pos));
 
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (!world.isClient && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer &&
