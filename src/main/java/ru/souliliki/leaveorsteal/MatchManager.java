@@ -71,7 +71,10 @@ public final class MatchManager {
     }
 
     public synchronized void showSettings(ServerPlayerEntity player) {
-        ServerPlayNetworking.send(player, new SettingsSyncPayload(arenaTeleportEnabled, restoreHealthEnabled, restoreHungerEnabled));
+        List<Integer> classWeights = Arrays.stream(ChestClass.values())
+            .map(chestClass -> ItemPoolRegistry.get().getClassWeight(chestClass)).toList();
+        ServerPlayNetworking.send(player, new SettingsSyncPayload(
+            arenaTeleportEnabled, restoreHealthEnabled, restoreHungerEnabled, classWeights));
         player.sendMessage(Text.literal("§6§lОбман и доверие — настройки"), false);
         sendSetting(player, "Телепортация на арену", "arena", arenaTeleportEnabled);
         sendSetting(player, "Восстанавливать здоровье", "health", restoreHealthEnabled);
