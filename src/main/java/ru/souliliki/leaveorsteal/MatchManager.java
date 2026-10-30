@@ -1,6 +1,11 @@
 package ru.souliliki.leaveorsteal;
 
 import net.minecraft.item.Item;
+import net.minecraft.block.Blocks;
+import net.minecraft.block.BlockState;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ArmorItem;
 import net.minecraft.entity.EquipmentSlot;
@@ -491,6 +496,7 @@ public final class MatchManager {
         match.roundClass = ItemPoolRegistry.get().getClassFor(id);
         match.claim = null;
         match.phase = Phase.CLAIM;
+        removeTrapChest(match);
         match.doubleRewardEvent = false;
         match.trapEvent = false;
         match.revealEvent = false;
@@ -498,10 +504,11 @@ public final class MatchManager {
         if (random.nextInt(100) < eventChance) {
             int event = random.nextInt(3);
             if (event == 0) { match.doubleRewardEvent = true; notifyBoth(server, match, "§6Событие раунда: ДВОЙНАЯ НАГРАДА! Победитель получит два экземпляра предмета."); }
-            else if (event == 1) { match.trapEvent = true; notifyBoth(server, match, "§cСобытие раунда: СУНДУК С ПОДВОХОМ! Победителя ждёт неприятный сюрприз."); }
+            else if (event == 1) { match.trapEvent = true; notifyBoth(server, match, "§cСобытие раунда: СУНДУК С ПОДВОХОМ! На арене появился сундук — открой его ПКМ, но будь осторожен."); }
             else { match.revealEvent = true; notifyBoth(server, match, "§bСобытие раунда: ПРОЗРАЧНОСТЬ! Соперник сможет увидеть предмет."); }
         }
         if (match.highStakes && !match.doubleRewardEvent) { match.doubleRewardEvent = true; notifyBoth(server, match, "§cВысокие ставки: награда раунда удвоена."); }
+        if (match.trapEvent) spawnTrapChest(server, match);
 
         ServerPlayerEntity owner = server.getPlayerManager().getPlayer(match.owner);
         ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(match.other(match.owner));
@@ -622,11 +629,6 @@ public final class MatchManager {
         if (match.doubleRewardEvent) match.items.get(winner).add(match.roundItem.copy());
         for (ItemStack stake : match.stakes.values()) match.items.get(winner).add(stake.copy());
         match.stakes.clear();
-        if (match.trapEvent) {
-            ServerPlayerEntity winnerPlayer = server.getPlayerManager().getPlayer(winner);
-            if (winnerPlayer != null) winnerPlayer.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 100, 0));
-            notifyBoth(server, match, "§cЛовушка сработала: победитель раунда отравлен!");
-        }
         for (ItemStack ammo : match.roundBonusItems) match.items.get(winner).add(ammo.copy());
         match.roundBonusItems.clear();
 
@@ -638,6 +640,7 @@ public final class MatchManager {
             chooserPlayer.sendMessage(Text.literal(steal ? "§6Ты забрал предмет этого раунда." : "§6Ты оставил предмет сопернику."), false);
         }
 
+        removeTrapChest(match);
         match.round++;
         match.roundItem = ItemStack.EMPTY;
         if (match.round > match.totalRounds) {
