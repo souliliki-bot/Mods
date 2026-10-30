@@ -3,7 +3,7 @@
   "id": "leave_or_steal",
   "version": "${version}",
   "name": "Обман и доверие",
-  "description": "Мини-игра с блефом, семью сундуками-классами и режимом против бота.",
+  "description": "Многопользовательская мини-игра с блефом, раундами с предметами и финальной PvP-дуэлью.",
   "authors": ["souliliki-bot"],
   "environment": "*",
   "entrypoints": {
