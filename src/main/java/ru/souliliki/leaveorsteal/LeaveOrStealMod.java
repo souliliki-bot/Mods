@@ -8,6 +8,8 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.minecraft.util.ActionResult;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -40,6 +42,15 @@ public class LeaveOrStealMod implements ModInitializer {
             MatchManager.get().loadSettings(server);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> MatchManager.get().saveOnShutdown(server));
+
+        UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (!world.isClient && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer &&
+                entity instanceof net.minecraft.entity.mob.MobEntity mob &&
+                MatchManager.get().showMobMenu(serverPlayer, mob)) {
+                return ActionResult.SUCCESS;
+            }
+            return ActionResult.PASS;
+        });
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
             MatchManager.get().onJoin(handler.getPlayer())
@@ -100,6 +111,17 @@ public class LeaveOrStealMod implements ModInitializer {
                     MatchManager.get().startBotMatch(context.getSource().getPlayer());
                     return 1;
                 }))
+                .then(CommandManager.literal("mob")
+                    .then(CommandManager.literal("leave").executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().chooseMobAction(context.getSource().getPlayer(), false);
+                        return 1;
+                    }))
+                    .then(CommandManager.literal("fight").executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().chooseMobAction(context.getSource().getPlayer(), true);
+                        return 1;
+                    })))
                 .then(CommandManager.literal("settings").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
                     if (context.getSource().getPlayer() == null) return 0;
                     MatchManager.get().showSettings(context.getSource().getPlayer());
