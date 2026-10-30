@@ -292,6 +292,12 @@ public final class MatchManager {
         }
     }
 
+    private void prepareForDuel(ServerPlayerEntity player) {
+        player.setHealth(player.getMaxHealth());
+        player.getHungerManager().setFoodLevel(20);
+        player.getHungerManager().setSaturationLevel(20.0f);
+        player.sendMessage(Text.literal("§aПеред дуэлью здоровье и сытость восстановлены. Твоя экипировка и эффекты не изменены."), false);
+    }
     private void teleportToArena(MinecraftServer server, Match match) {
         if (arenaFirst == null || arenaSecond == null) {
             notifyBoth(server, match, "§eТочки арены не настроены: бой начнётся на текущем месте. Используй /leaveorsteal setarena1 и setarena2.");
@@ -299,8 +305,14 @@ public final class MatchManager {
         }
         ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
         ServerPlayerEntity second = server.getPlayerManager().getPlayer(match.second);
-        if (first != null) teleport(first, arenaFirst);
-        if (second != null) teleport(second, arenaSecond);
+        if (first != null) {
+            teleport(first, arenaFirst);
+            prepareForDuel(first);
+        }
+        if (second != null) {
+            teleport(second, arenaSecond);
+            prepareForDuel(second);
+        }
     }
 
     private void teleport(ServerPlayerEntity player, ArenaPoint point) {
