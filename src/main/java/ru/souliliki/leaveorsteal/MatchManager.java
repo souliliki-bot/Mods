@@ -37,15 +37,29 @@ public final class MatchManager {
             JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
             var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
             for (var entry : root.entrySet()) {
-                UUID playerId;
-                try { playerId = UUID.fromString(entry.getKey()); }
-                catch (IllegalArgumentException ignored) { continue; }
-                List<ItemStack> stacks = pendingRewards.computeIfAbsent(playerId, ignored -> new ArrayList<>());
+                final UUID playerId;
+                try {
+                    playerId = UUID.fromString(entry.getKey());
+                } catch (IllegalArgumentException ignored) {
+                    LeaveOrStealMod.LOGGER.warn("Пропущена запись наград с некорректным UUID: {}", entry.getKey());
+                    continue;
+                }
+
+                if (!entry.getValue().isJsonArray()) {
+                    LeaveOrStealMod.LOGGER.warn("Пропущен список наград игрока {}: ожидался JSON-массив", playerId);
+                    continue;
+                }
+
+                List<ItemStack> stacks = new ArrayList<>();
                 for (JsonElement element : entry.getValue().getAsJsonArray()) {
-                    ItemStack.CODEC.parse(ops, element).result().ifPresent(stack -> {
+                    var decoded = ItemStack.CODEC.parse(ops, element);
+                    decoded.resultOrPartial(error ->
+                        LeaveOrStealMod.LOGGER.warn("Не удалось прочитать одну из наград игрока {}: {}", playerId, error)
+                    ).ifPresent(stack -> {
                         if (!stack.isEmpty()) stacks.add(stack);
                     });
                 }
+                if (!stacks.isEmpty()) pendingRewards.put(playerId, stacks);
             }
         } catch (Exception exception) {
             LeaveOrStealMod.LOGGER.error("Не удалось загрузить отложенные награды", exception);
