@@ -36,30 +36,17 @@ public final class MatchManager {
         try (var reader = Files.newBufferedReader(rewardsFile)) {
             JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
             var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
-            for (var entry : root.entrySet()) {
-                final UUID playerId;
-                try {
-                    playerId = UUID.fromString(entry.getKey());
-                } catch (IllegalArgumentException ignored) {
-                    LeaveOrStealMod.LOGGER.warn("Пропущена запись наград с некорректным UUID: {}", entry.getKey());
-                    continue;
-                }
-
-                if (!entry.getValue().isJsonArray()) {
-                    LeaveOrStealMod.LOGGER.warn("Пропущен список наград игрока {}: ожидался JSON-массив", playerId);
-                    continue;
-                }
-
+            for (var entry : RewardDataParser.parse(root).entrySet()) {
                 List<ItemStack> stacks = new ArrayList<>();
-                for (JsonElement element : entry.getValue().getAsJsonArray()) {
+                for (JsonElement element : entry.getValue()) {
                     var decoded = ItemStack.CODEC.parse(ops, element);
                     decoded.resultOrPartial(error ->
-                        LeaveOrStealMod.LOGGER.warn("Не удалось прочитать одну из наград игрока {}: {}", playerId, error)
+                        LeaveOrStealMod.LOGGER.warn("Не удалось прочитать одну из наград игрока {}: {}", entry.getKey(), error)
                     ).ifPresent(stack -> {
                         if (!stack.isEmpty()) stacks.add(stack);
                     });
                 }
-                if (!stacks.isEmpty()) pendingRewards.put(playerId, stacks);
+                if (!stacks.isEmpty()) pendingRewards.put(entry.getKey(), stacks);
             }
         } catch (Exception exception) {
             LeaveOrStealMod.LOGGER.error("Не удалось загрузить отложенные награды", exception);
