@@ -12,7 +12,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.text.MutableText;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.text.MutableText;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.util.Identifier;
 import net.minecraft.registry.RegistryOps;
