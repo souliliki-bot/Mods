@@ -70,13 +70,15 @@ public final class MatchManager {
             return;
         }
         match.roundItem = new ItemStack(item);
+        match.roundItemId = id;
+        match.roundClass = ItemPoolRegistry.get().getClassFor(id);
         match.claim = null;
         match.phase = Phase.CLAIM;
 
         ServerPlayerEntity owner = server.getPlayerManager().getPlayer(match.owner);
         ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(match.other(match.owner));
         if (owner != null) owner.sendMessage(Text.literal("§aРаунд " + match.round + "/9. Твой тайный предмет: §f" +
-            match.roundItem.getName().getString() + "§a. Расскажи о нём сопернику командой §e/leaveorsteal claim <текст>§a."), false);
+            match.roundItem.getName().getString() + "§a (§f" + (match.roundClass == null ? "без класса" : match.roundClass.displayName()) + "§a). Расскажи о нём сопернику командой §e/leaveorsteal claim <текст>§a."), false);
         if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/9. Соперник выбирает предмет и готовит заявление. Сам предмет пока скрыт."), false);
     }
 
@@ -85,6 +87,23 @@ public final class MatchManager {
         if (match == null) return queue.contains(player.getUuid()) ? "Ожидание соперника" : "Не в матче";
         return "Раунд " + match.round + "/9, этап: " + match.phase + ", твоя роль: " +
             (match.owner.equals(player.getUuid()) ? "владелец предмета" : "принимаешь решение");
+    }
+
+    public synchronized void showLoot(ServerPlayerEntity player) {
+        Match match = matches.get(player.getUuid());
+        if (match == null) {
+            player.sendMessage(Text.literal("§eСейчас у тебя нет активного матча с наградами."), false);
+            return;
+        }
+        List<ItemStack> loot = match.items.get(player.getUuid());
+        if (loot == null || loot.isEmpty()) {
+            player.sendMessage(Text.literal("§eТы пока не выиграл предметов."), false);
+            return;
+        }
+        String summary = loot.stream()
+            .map(stack -> stack.getCount() + "x " + stack.getName().getString())
+            .reduce((a, b) -> a + ", " + b).orElse("");
+        player.sendMessage(Text.literal("§6Твои выигранные предметы (пока хранятся на сервере): §f" + summary), false);
     }
 
     public synchronized void claim(ServerPlayerEntity player, String statement) {
@@ -172,7 +191,7 @@ public final class MatchManager {
         int round = 1;
         Phase phase = Phase.CLAIM;
         String claim;
-        ItemStack roundItem = ItemStack.EMPTY;
+        ItemStack roundItem = ItemStack.EMPTY;\n        Identifier roundItemId;\n        ChestClass roundClass;
 
         Match(UUID first, UUID second) {
             this.first = first;
