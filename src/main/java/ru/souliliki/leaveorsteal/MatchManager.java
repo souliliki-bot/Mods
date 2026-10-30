@@ -84,9 +84,14 @@ public final class MatchManager {
         sendSetting(player, "Телепортация на арену", "arena", arenaTeleportEnabled);
         sendSetting(player, "Восстанавливать здоровье", "health", restoreHealthEnabled);
         sendSetting(player, "Восстанавливать голод", "hunger", restoreHungerEnabled);
-        player.sendMessage(Text.literal("§fКоличество раундов: §e" + roundsPerMatch + " §c[-] §a[+]" ).styled(style -> style
-            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal rounds " + Math.max(1, roundsPerMatch - 1)))), false);
-        player.sendMessage(Text.literal("§7Увеличить количество раундов: /leaveorsteal rounds " + Math.min(30, roundsPerMatch + 1)), false);
+        MutableText roundsLine = Text.literal("§fКоличество раундов: §e" + roundsPerMatch + " ");
+        Text decreaseRounds = Text.literal("§c[-]").styled(style ->
+            style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                "/leaveorsteal rounds " + Math.max(1, roundsPerMatch - 1))));
+        Text increaseRounds = Text.literal(" §a[+]").styled(style ->
+            style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                "/leaveorsteal rounds " + Math.min(30, roundsPerMatch + 1))));
+        player.sendMessage(roundsLine.append(decreaseRounds).append(increaseRounds), false);
         player.sendMessage(Text.literal("§6§lКлассы предметов в матчах"), false);
         for (ChestClass chestClass : ChestClass.values()) {
             sendClassSetting(player, chestClass);
