@@ -98,41 +98,33 @@ public final class ItemPoolRegistry {
         if (id == null || !Registries.ITEM.containsId(id)) {
             return "Предмет не найден в реестре сервера.";
         }
-        inspectionItemId = id;
         String override = config.getProperty("item." + id, "").trim();
         if (!override.isEmpty()) {
             ChestClass manual = parseClass(override);
-            if (manual != null) return formatClassification(manual, "ручное правило item." + id);
+            if (manual != null) return formatClassification(id, manual, "ручное правило item." + id);
         }
         ChestClass integration = ItemClassificationRegistry.get().classify(id);
-        if (integration != null) return formatClassification(integration, "интеграция стороннего мода");
+        if (integration != null) return formatClassification(id, integration, "интеграция стороннего мода");
         ChestClass namespace = parseClass(config.getProperty("namespace." + id.getNamespace(), ""));
-        if (namespace != null) return formatClassification(namespace, "правило namespace." + id.getNamespace());
+        if (namespace != null) return formatClassification(id, namespace, "правило namespace." + id.getNamespace());
         ChestClass pathClass = classifyByConfiguredPath(id);
-        if (pathClass != null) return formatClassification(pathClass, "правило path.<КЛАСС>");
-        return formatClassification(classifyByDefault(id), "встроенная классификация по ID");
+        if (pathClass != null) return formatClassification(id, pathClass, "правило path.<КЛАСС>");
+        return formatClassification(id, classifyByDefault(id), "встроенная классификация по ID");
     }
 
-    private String formatClassification(ChestClass chestClass, String source) {
+    private String formatClassification(Identifier id, ChestClass chestClass, String source) {
         StringBuilder result = new StringBuilder("Класс: ")
             .append(chestClass.name()).append(" — ").append(chestClass.displayName())
             .append("\\nИсточник: ").append(source);
-        String exclusion = getPoolExclusionReason(chestClass, sourceItemId(source));
+        String exclusion = getPoolExclusionReason(chestClass, id);
         result.append("\\nКласс включён: ").append(isClassEnabled(chestClass));
         if (exclusion == null) {
-            result.append("\\nВ пуле: ").append(pools.get(chestClass).contains(sourceItemId(source)) ? "да" : "нет");
+            result.append("\\nВ пуле: ").append(pools.get(chestClass).contains(id) ? "да" : "нет");
         } else {
             result.append("\\nВ пуле: нет (").append(exclusion).append(")");
         }
         return result.toString();
     }
-
-    private Identifier sourceItemId(String ignored) {
-        // The current inspection ID is supplied by the dedicated overload below.
-        return inspectionItemId;
-    }
-
-    private Identifier inspectionItemId;
 
     private String getPoolExclusionReason(ChestClass chestClass, Identifier id) {
         Set<String> enabledNamespaces = csv(config.getProperty("enabledNamespaces", "*"));
