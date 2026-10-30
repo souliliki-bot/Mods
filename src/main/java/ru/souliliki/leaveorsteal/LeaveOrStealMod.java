@@ -30,7 +30,7 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: join, claim <текст>, keep, steal, status, leave, classes, pool, items <namespace>, reloadconfig."
+                        "Команды: join, claim <текст>, keep, steal, loot, status, leave, classes, pool, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
@@ -59,6 +59,11 @@ public class LeaveOrStealMod implements ModInitializer {
                     if (context.getSource().getPlayer() == null) return 0;
                     MatchManager.get().leave(context.getSource().getPlayer());
                     context.getSource().sendFeedback(() -> Text.literal("Ты покинул очередь/матч."), false);
+                    return 1;
+                }))
+                .then(CommandManager.literal("loot").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().showLoot(context.getSource().getPlayer());
                     return 1;
                 }))
                 .then(CommandManager.literal("status").executes(context -> {
