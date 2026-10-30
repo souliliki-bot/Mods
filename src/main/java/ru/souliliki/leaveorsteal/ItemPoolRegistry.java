@@ -33,6 +33,13 @@ public final class ItemPoolRegistry {
         boolean addedDefaults = false;
         addedDefaults |= config.putIfAbsent("excludedPathKeywords",
             "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book") == null;
+        addedDefaults |= config.putIfAbsent("weight.COMMON", "60") == null;
+        addedDefaults |= config.putIfAbsent("weight.IRON_GEAR", "20") == null;
+        addedDefaults |= config.putIfAbsent("weight.DIAMOND_GEAR", "8") == null;
+        addedDefaults |= config.putIfAbsent("weight.NETHERITE_GEAR", "2") == null;
+        addedDefaults |= config.putIfAbsent("weight.POTIONS_FOOD", "5") == null;
+        addedDefaults |= config.putIfAbsent("weight.RARE", "4") == null;
+        addedDefaults |= config.putIfAbsent("weight.LEGENDARY", "1") == null;
         addedDefaults |= config.putIfAbsent("enabledClasses",
             String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList())) == null;
         addedDefaults |= config.putIfAbsent("# namespace.<modid>=<CHEST_CLASS>",
@@ -71,6 +78,48 @@ public final class ItemPoolRegistry {
 
     public synchronized List<Identifier> getItems(ChestClass chestClass) {
         return List.copyOf(pools.get(chestClass));
+    }
+
+    public synchronized int getClassWeight(ChestClass chestClass) {
+        int fallback = defaultWeight(chestClass);
+        try {
+            return Math.max(0, Integer.parseInt(config.getProperty("weight." + chestClass.name(),
+                Integer.toString(fallback)).trim()));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    public synchronized Identifier getRandomItem(Random random) {
+        long totalWeight = 0L;
+        for (ChestClass chestClass : ChestClass.values()) {
+            if (isClassEnabled(chestClass) && !pools.get(chestClass).isEmpty()) {
+                totalWeight += getClassWeight(chestClass);
+            }
+        }
+        if (totalWeight <= 0L) return null;
+
+        long roll = (long) (random.nextDouble() * totalWeight);
+        for (ChestClass chestClass : ChestClass.values()) {
+            List<Identifier> items = pools.get(chestClass);
+            int weight = isClassEnabled(chestClass) && !items.isEmpty() ? getClassWeight(chestClass) : 0;
+            if (weight <= 0) continue;
+            if (roll < weight) return items.get(random.nextInt(items.size()));
+            roll -= weight;
+        }
+        return null;
+    }
+
+    private int defaultWeight(ChestClass chestClass) {
+        return switch (chestClass) {
+            case COMMON -> 60;
+            case IRON_GEAR -> 20;
+            case DIAMOND_GEAR -> 8;
+            case NETHERITE_GEAR -> 2;
+            case POTIONS_FOOD -> 5;
+            case RARE -> 4;
+            case LEGENDARY -> 1;
+        };
     }
 
     public synchronized ChestClass getClassFor(Identifier id) {
