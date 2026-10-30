@@ -370,6 +370,7 @@ public final class MatchManager {
     public synchronized void saveOnShutdown(MinecraftServer server) {
         Set<Match> activeMatches = new HashSet<>(matches.values());
         for (Match match : activeMatches) {
+            removeTrapChest(match);
             if (match.roundItem != null && !match.roundItem.isEmpty()) {
                 match.items.get(match.owner).add(match.roundItem.copy());
                 match.roundItem = ItemStack.EMPTY;
@@ -1103,6 +1104,7 @@ public final class MatchManager {
 
     private void finishDuel(MinecraftServer server, Match match, UUID winner, String winnerMessage) {
         if (match.phase != Phase.DUEL) return;
+        removeTrapChest(match);
         match.phase = Phase.FINISHED;
         recordMatchResult(server, match, winner);
         if (match.duelMob != null && match.duelMob.isAlive()) match.duelMob.discard();
@@ -1122,6 +1124,7 @@ public final class MatchManager {
     }
 
     private void finishMatch(MinecraftServer server, Match match, String message) {
+        removeTrapChest(match);
         if (match.roundItem != null && !match.roundItem.isEmpty()) {
             match.items.get(match.owner).add(match.roundItem.copy());
             match.roundItem = ItemStack.EMPTY;
