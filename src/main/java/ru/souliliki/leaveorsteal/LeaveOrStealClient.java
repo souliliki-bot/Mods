@@ -22,7 +22,7 @@ public final class LeaveOrStealClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(SettingsSyncPayload.ID, (payload, context) ->
             context.client().execute(() -> context.client().setScreen(new SettingsScreen(
-                payload.arenaTeleport(), payload.restoreHealth(), payload.restoreHunger(), payload.classWeights(), payload.enabledClasses()
+                payload.arenaTeleport(), payload.restoreHealth(), payload.restoreHunger(), payload.roundsPerMatch(), payload.classWeights(), payload.enabledClasses()
             )))
         );
 
