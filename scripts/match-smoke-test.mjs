@@ -126,6 +126,8 @@ async function main() {
       }
     }
     await waitFor(first, message => message.includes('вышел моб-противник:') && message.includes('экипирован добытыми предметами'), 'spawned and equipped hostile mob duel');
+    first.chat('/leaveorsteal leave');
+    await waitFor(first, message => message.includes('Ты сдался и проиграл дуэль'), 'bot duel surrender and mob cleanup');
 
     histories.get(first).length = 0;
     histories.get(second).length = 0;
