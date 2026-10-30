@@ -71,7 +71,7 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: menu, lobby create, invite <игрок>, accept <игрок>, decline <игрок>, bot, settings (настройки, оператор), setting <arena|health|hunger>, rounds <1..30>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
+                        "Команды: menu, lobby create, invite <игрок>, accept <игрок>, decline <игрок>, bot, quick, chaos, highstakes, ability <shield|insight>, wager, stats, settings (настройки, оператор), setting <arena|health|hunger>, rounds <1..30>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
@@ -109,6 +109,39 @@ public class LeaveOrStealMod implements ModInitializer {
                 .then(CommandManager.literal("bot").executes(context -> {
                     if (context.getSource().getPlayer() == null) return 0;
                     MatchManager.get().startBotMatch(context.getSource().getPlayer());
+                    return 1;
+                }))
+                .then(CommandManager.literal("quick").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().startBotMatch(context.getSource().getPlayer(), 3, false, false);
+                    return 1;
+                }))
+                .then(CommandManager.literal("chaos").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().startBotMatch(context.getSource().getPlayer(), 9, true, false);
+                    return 1;
+                }))
+                .then(CommandManager.literal("highstakes").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().startBotMatch(context.getSource().getPlayer(), 9, false, true);
+                    return 1;
+                }))
+                .then(CommandManager.literal("ability").then(CommandManager.argument("name", StringArgumentType.word())
+                    .suggests((context, builder) -> {
+                        builder.suggest("shield"); builder.suggest("insight"); return builder.buildFuture();
+                    }).executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().useAbility(context.getSource().getPlayer(), StringArgumentType.getString(context, "name"));
+                        return 1;
+                    })))
+                .then(CommandManager.literal("wager").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().wager(context.getSource().getPlayer());
+                    return 1;
+                }))
+                .then(CommandManager.literal("stats").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().showStats(context.getSource().getPlayer());
                     return 1;
                 }))
                 .then(CommandManager.literal("mob")
