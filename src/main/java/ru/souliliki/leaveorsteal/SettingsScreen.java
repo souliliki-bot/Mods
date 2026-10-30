@@ -7,20 +7,23 @@ import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
 import java.util.List;
+import java.util.Locale;
 
 public final class SettingsScreen extends Screen {
     private final boolean arenaTeleport;
     private final boolean restoreHealth;
     private final boolean restoreHunger;
     private final List<Integer> classWeights;
+    private final List<Boolean> enabledClasses;
 
     public SettingsScreen(boolean arenaTeleport, boolean restoreHealth, boolean restoreHunger,
-                          List<Integer> classWeights) {
+                          List<Integer> classWeights, List<Boolean> enabledClasses) {
         super(Text.literal("Обман и доверие — настройки"));
         this.arenaTeleport = arenaTeleport;
         this.restoreHealth = restoreHealth;
         this.restoreHunger = restoreHunger;
         this.classWeights = List.copyOf(classWeights);
+        this.enabledClasses = List.copyOf(enabledClasses);
     }
 
     @Override
@@ -34,8 +37,13 @@ public final class SettingsScreen extends Screen {
         for (ChestClass chestClass : ChestClass.values()) {
             int index = chestClass.ordinal();
             int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
+            boolean enabled = index < enabledClasses.size() && enabledClasses.get(index);
             int y = top + 83 + index * 22;
-            String name = chestClass.name().toLowerCase(java.util.Locale.ROOT);
+            String name = chestClass.name().toLowerCase(Locale.ROOT);
+
+            addDrawableChild(ButtonWidget.builder(Text.literal(enabled ? "ВКЛ" : "ВЫКЛ"), button ->
+                sendCommand("leaveorsteal class " + name))
+                .dimensions(center - 220, y, 88, 20).build());
             addDrawableChild(ButtonWidget.builder(Text.literal("−"), button ->
                 sendWeight(name, Math.max(0, weight - 1)))
                 .dimensions(center - 125, y, 28, 20).build());
@@ -50,20 +58,21 @@ public final class SettingsScreen extends Screen {
     }
 
     private void sendWeight(String className, int weight) {
+        sendCommand("leaveorsteal weight " + className + " " + weight);
+    }
+
+    private void sendCommand(String command) {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.getNetworkHandler() != null) {
-            client.getNetworkHandler().sendChatCommand("leaveorsteal weight " + className + " " + weight);
+            client.getNetworkHandler().sendChatCommand(command);
         }
     }
 
     private ButtonWidget toggleButton(int center, int y, String label, String key, boolean enabled) {
         String state = enabled ? "ВКЛ" : "ВЫКЛ";
-        return ButtonWidget.builder(Text.literal(label + ": " + state), button -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.getNetworkHandler() != null) {
-                client.getNetworkHandler().sendChatCommand("leaveorsteal setting " + key);
-            }
-        }).dimensions(center - 125, y, 250, 20).build();
+        return ButtonWidget.builder(Text.literal(label + ": " + state), button ->
+            sendCommand("leaveorsteal setting " + key)
+        ).dimensions(center - 125, y, 250, 20).build();
     }
 
     @Override
@@ -80,7 +89,7 @@ public final class SettingsScreen extends Screen {
                 width / 2, top + 89 + index * 22 + 6, 0xFFFFFF);
         }
         context.drawCenteredTextWithShadow(textRenderer,
-            Text.literal("Вес выпадения классов • изменения сохраняются автоматически"),
+            Text.literal("Классы: ВКЛ/ВЫКЛ • Вес: −/+ • Сохранение автоматическое"),
             width / 2, height - 12, 0xA0A0A0);
     }
 
