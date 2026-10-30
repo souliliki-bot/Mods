@@ -39,7 +39,21 @@ function onlineByName(name) { return players().find(p => p.name.toLowerCase() ==
 function inMatch(p) { return !!match && match.players.some(x => x?.id === p.id); }
 function announce(msg) { if (match) for (const p of match.players) if (p) tell(p, msg); }
 function stats(p) { return state.stats[p.id] ?? (state.stats[p.id] = { wins: 0, losses: 0, rounds: 0, steals: 0, kept: 0 }); }
-function stat(p, key, amount = 1) { const s = stats(p); s[key] = (s[key] ?? 0) + amount; saveState(); }
+function stat(p, key, amount = 1) {
+  const s = stats(p); s[key] = (s[key] ?? 0) + amount;
+  const marks = [
+    ["wins",5,"Опытный игрок"],["wins",10,"Мастер обмана"],["wins",25,"Легенда доверия"],
+    ["steals",10,"Искусный вор"],["rounds",25,"Ветеран арены"]
+  ];
+  for (const [field, threshold, title] of marks) {
+    const id = field + ":" + threshold;
+    if (key === field && s[field] >= threshold && !state.achievements[p.id + ":" + id]) {
+      state.achievements[p.id + ":" + id] = true;
+      tell(p, "§6Достижение открыто: " + title + "!");
+    }
+  }
+  saveState();
+}
 function give(p, typeId, amount = 1) {
   try {
     const inv = p.getComponent("minecraft:inventory")?.container;
@@ -186,13 +200,12 @@ function beginRound() {
   if (match.bot) {
     system.runTimeout(() => {
       if (!match || match.phase !== "claim") return;
-      const botClaim = Math.random() < 0.5 ? "Это ценный предмет" : "Обычная вещь, поверь мне";
-      match.claim = botClaim;
-      announce("ИИ заявляет: «" + botClaim + "».");
+      match.claim = "Игрок не сделал заявление вовремя.";
       match.phase = "decision";
-      tell(match.players[0], "ИИ выбирает: " + (Math.random() < 0.45 ? "украсть" : "оставить") + ". Используй !los keep или !los steal.");
-      match.botChoice = Math.random() < 0.45 ? "steal" : "keep";
-    }, 40);
+      match.botChoice = Math.random() < (match.reveal ? 0.7 : 0.45) ? "steal" : "keep";
+      announce("ИИ принимает решение: " + (match.botChoice === "steal" ? "украсть" : "оставить") + ".");
+      system.runTimeout(() => { if (match?.phase === "decision") resolveChoice(match.botChoice, match.players[0]); }, 30);
+    }, 400);
   }
 }
 function submitClaim(p, text) {
@@ -220,7 +233,9 @@ function resolveChoice(choice, chooser) {
   if (!match.bot || !stolen) give(winner, match.reward.typeId, amount);
   if (stolen && !match.bot) stat(chooser, "steals"); else if (!stolen || match.shieldUsed) stat(owner, "kept");
   for (const p of match.players) if (p) stat(p, "rounds");
-  announce(stolen ? chooser.name + " украл награду у " + owner.name + "!" : owner.name + " сохранил награду.");
+  announce(match.bot
+    ? (stolen ? "ИИ украл награду!" : "ИИ оставил награду владельцу.")
+    : (stolen ? chooser.name + " украл награду у " + owner.name + "!" : owner.name + " сохранил награду."));
   announce("Получено: " + match.reward.typeId + " ×" + amount + ".");
   const wagers = Object.values(match.escrow ?? {}).flat();
   if (wagers.length) for (const item of wagers) give(winner, item.typeId, item.amount);
@@ -275,6 +290,14 @@ function beginFinalPhase() {
       mob.nameTag = "Финальный соперник";
       mob.addEffect("strength", 20 * 60 * 10, { amplifier: 1, showParticles: true });
       mob.addEffect("resistance", 20 * 60 * 10, { amplifier: 1, showParticles: true });
+      try {
+        const gear = mob.getComponent("minecraft:equippable");
+        gear?.setEquipment("Mainhand", new ItemStack("minecraft:netherite_sword"));
+        gear?.setEquipment("Head", new ItemStack("minecraft:diamond_helmet"));
+        gear?.setEquipment("Chest", new ItemStack("minecraft:diamond_chestplate"));
+        gear?.setEquipment("Legs", new ItemStack("minecraft:diamond_leggings"));
+        gear?.setEquipment("Feet", new ItemStack("minecraft:diamond_boots"));
+      } catch {}
       mob.addEffect("slowness", 20 * 60 * 10, { amplifier: 10, showParticles: false });
     } catch { tell(p, "Не удалось создать финального моба. Матч завершён без дуэли."); finishMatch(p, undefined); return; }
     announce("§cДевять раундов позади. Финальный моб ждёт решения: !los mob fight или !los mob leave.");
@@ -425,7 +448,14 @@ function command(p, raw) {
   else if (cmd === "status") tell(p, match && inMatch(p) ? "Фаза: "+match.phase+", раунд "+match.round+"/"+match.rounds : "Ты не участвуешь в матче.");
   else if (cmd === "leave") {
     if (!match || !inMatch(p)) { queue=queue.filter(id=>id!==p.id); tell(p,"Ты вышел из очереди."); return; }
-    if (match.phase === "duel" || match.phase === "mob_fight") {
+    if (match.teamMode) {
+      const losingTeam=match.teams.find(team=>team.some(x=>x.id===p.id));
+      const winningTeam=match.teams.find(team=>team!==losingTeam);
+      for (const x of winningTeam) stat(x,"wins");
+      for (const x of losingTeam) stat(x,"losses");
+      announce("Команда "+winningTeam.map(x=>x.name).join(" и ")+" победила: "+p.name+" сдался.");
+      returnEscrow(); cleanChest(); match=undefined;
+    } else if (match.phase === "duel" || match.phase === "mob_fight") {
       const opponent=match.players.find(x=>x&&x.id!==p.id);
       finishMatch(opponent,p,p.name+" сдался.");
     } else { announce(p.name+" покинул матч."); returnEscrow(); cleanChest(); match=undefined; }
