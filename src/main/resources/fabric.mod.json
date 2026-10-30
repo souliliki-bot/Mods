@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "leave_or_steal",
+  "version": "${version}",
+  "name": "Обман и доверие",
+  "description": "Мини-игра с блефом, семью сундуками-классами и режимом против бота.",
+  "authors": ["souliliki-bot"],
+  "environment": "*",
+  "entrypoints": {
+    "main": ["ru.souliliki.leaveorsteal.LeaveOrStealMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
