@@ -196,8 +196,8 @@ function beginRound() {
   cleanChest();
   if (match.round > match.rounds) { beginFinalPhase(); return; }
   match.phase = "claim";
-  match.ownerIndex = match.bot ? 0 : (match.round - 1) % match.players.length;
-  match.chooserIndex = match.bot ? 1 : (match.teamMode ? (match.ownerIndex + 2) % match.players.length : (match.ownerIndex + 1) % match.players.length);
+  match.ownerIndex = match.bot ? ((match.round - 1) % 2) : (match.round - 1) % match.players.length;
+  match.chooserIndex = match.bot ? (1 - match.ownerIndex) : (match.teamMode ? (match.ownerIndex + 2) % match.players.length : (match.ownerIndex + 1) % match.players.length);
   match.reward = randomReward().item;
   match.shieldUsed = false; match.insightUsed = false; match.doubleReward = false; match.reveal = false;
   match.claim = ""; match.wagerRound = {};
@@ -206,7 +206,12 @@ function beginRound() {
   tell(owner, "Твой тайный предмет: " + match.reward.typeId + ". Заявись: !los claim <текст>. Решение можно будет сделать после заявления.");
   if (chooser) tell(chooser, "Соперник скрывает предмет. Используй !los insight или дождись решения.");
   roundEvent();
-  if (match.bot) {
+  if (match.bot && match.ownerIndex === 1) {
+    match.claim = Math.random() < 0.5 ? "Это редкая находка, поверь мне" : "Обычный предмет, ничего особенного";
+    match.phase = "decision";
+    announce("ИИ заявляет: «" + match.claim + "».");
+    tell(match.players[0], "Теперь твой выбор против ИИ: !los keep или !los steal.");
+  } else if (match.bot) {
     system.runTimeout(() => {
       if (!match || match.phase !== "claim") return;
       match.claim = "Игрок не сделал заявление вовремя.";
@@ -237,21 +242,27 @@ function resolveChoice(choice, chooser) {
   } else if (match.players[match.chooserIndex]?.id !== chooser.id) return tell(chooser, "Сейчас решение принимает другой игрок.");
   const owner = match.players[match.ownerIndex];
   const stolen = choice === "steal" && !match.shieldUsed;
-  const winner = match.bot ? owner : (stolen ? chooser : owner);
+  const winner = stolen ? chooser : owner;
   const amount = (match.highStakes ? 2 : 1) * (match.doubleReward ? 2 : 1);
-  if (!match.bot || !stolen) {
+  if (winner) {
     give(winner, match.reward.typeId, amount);
     match.earnedItems ??= [];
     match.earnedItems.push(match.reward.typeId);
   }
-  if (stolen && !match.bot) stat(chooser, "steals"); else if (!stolen || match.shieldUsed) stat(owner, "kept");
+  if (stolen && !match.bot) stat(chooser, "steals");
+  else if ((!stolen || match.shieldUsed) && owner) stat(owner, "kept");
   for (const p of match.players) if (p) stat(p, "rounds");
   announce(match.bot
-    ? (stolen ? "ИИ украл награду!" : "ИИ оставил награду владельцу.")
+    ? (match.ownerIndex === 0
+      ? (stolen ? "ИИ украл награду у игрока!" : "Игрок сохранил свою награду.")
+      : (stolen ? chooser.name + " украл предмет у ИИ!" : "ИИ сохранил свою награду."))
     : (stolen ? chooser.name + " украл награду у " + owner.name + "!" : owner.name + " сохранил награду."));
   announce("Получено: " + match.reward.typeId + " ×" + amount + ".");
   const wagers = Object.values(match.escrow ?? {}).flat();
-  if (wagers.length) for (const item of wagers) give(winner, item.typeId, item.amount);
+  if (wagers.length) {
+    if (winner) for (const item of wagers) give(winner, item.typeId, item.amount);
+    else for (const p of match.players) if (p) for (const item of (match.escrow[p.id] ?? [])) give(p,item.typeId,item.amount);
+  }
   state.pendingEscrow = {}; saveState();
   match.escrow = {};
   match.phase = "between";
