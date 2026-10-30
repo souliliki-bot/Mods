@@ -42,9 +42,6 @@ public final class SettingsScreen extends Screen {
             sendCommand("leaveorsteal rounds " + Math.min(30, roundsPerMatch + 1)))
             .dimensions(center + 97, top + 69, 28, 20).build());
 
-        context.drawCenteredTextWithShadow(textRenderer,
-            Text.literal("Количество раундов: " + roundsPerMatch + " (1–30)"),
-            width / 2, top + 75, 0xFFFFFF);
         for (ChestClass chestClass : ChestClass.values()) {
             int index = chestClass.ordinal();
             int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
@@ -92,6 +89,9 @@ public final class SettingsScreen extends Screen {
         super.render(context, mouseX, mouseY, delta);
         context.drawCenteredTextWithShadow(textRenderer, title, width / 2, Math.max(0, height / 2 - 155), 0xFFFFFF);
         int top = Math.max(8, height / 2 - 135);
+        context.drawCenteredTextWithShadow(textRenderer,
+            Text.literal("Количество раундов: " + roundsPerMatch + " (1–30)"),
+            width / 2, top + 75, 0xFFFFFF);
         for (ChestClass chestClass : ChestClass.values()) {
             int index = chestClass.ordinal();
             int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
