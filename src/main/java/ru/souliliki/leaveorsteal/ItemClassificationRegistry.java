@@ -5,7 +5,9 @@ import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
@@ -19,7 +21,7 @@ public final class ItemClassificationRegistry {
     private static final ItemClassificationRegistry INSTANCE = new ItemClassificationRegistry();
 
     private final Map<Identifier, ChestClass> itemRules = new LinkedHashMap<>();
-    private final Map<String, Function<Identifier, ChestClass>> namespaceRules = new LinkedHashMap<>();
+    private final Map<String, List<Function<Identifier, ChestClass>>> namespaceRules = new LinkedHashMap<>();
 
     private ItemClassificationRegistry() {
     }
@@ -48,7 +50,7 @@ public final class ItemClassificationRegistry {
         if (namespace == null || namespace.isBlank() || classifier == null) {
             throw new IllegalArgumentException("namespace and classifier must not be blank/null");
         }
-        namespaceRules.put(namespace.toLowerCase(Locale.ROOT), classifier);
+        namespaceRules.computeIfAbsent(namespace.toLowerCase(Locale.ROOT), ignored -> new ArrayList<>()).add(classifier);
     }
 
     synchronized void reloadProviders() {
@@ -78,15 +80,24 @@ public final class ItemClassificationRegistry {
         ChestClass exact = itemRules.get(itemId);
         if (exact != null) return exact;
 
-        Function<Identifier, ChestClass> namespaceRule =
+        List<Function<Identifier, ChestClass>> rules =
             namespaceRules.get(itemId.getNamespace().toLowerCase(Locale.ROOT));
-        if (namespaceRule == null) return null;
+        if (rules == null) return null;
 
-        try {
-            return namespaceRule.apply(itemId);
-        } catch (RuntimeException exception) {
-            LOGGER.error("Ошибка классификатора для предмета {}", itemId, exception);
-            return null;
+        return classifyWithNamespaceRules(rules, itemId);
+    }
+
+    static ChestClass classifyWithNamespaceRules(
+        List<Function<Identifier, ChestClass>> rules, Identifier itemId
+    ) {
+        for (Function<Identifier, ChestClass> rule : rules) {
+            try {
+                ChestClass result = rule.apply(itemId);
+                if (result != null) return result;
+            } catch (RuntimeException exception) {
+                LOGGER.error("Ошибка классификатора для предмета {}", itemId, exception);
+            }
         }
+        return null;
     }
 }
