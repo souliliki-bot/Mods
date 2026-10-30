@@ -371,6 +371,8 @@ public final class MatchManager {
             }
             for (ItemStack ammo : match.roundBonusItems) match.items.get(match.owner).add(ammo.copy());
             match.roundBonusItems.clear();
+            for (var stake : match.stakes.entrySet()) match.items.get(stake.getKey()).add(stake.getValue().copy());
+            match.stakes.clear();
             for (UUID id : List.of(match.first, match.second)) {
                 List<ItemStack> pending = pendingRewards.computeIfAbsent(id, ignored -> new ArrayList<>());
                 for (ItemStack stack : match.items.get(id)) pending.add(stack.copy());
@@ -507,7 +509,7 @@ public final class MatchManager {
             match.claim = "Я нашёл кое-что интересное. Думаю, тебе стоит решить, доверяешь ли ты мне.";
             match.phase = Phase.DECISION;
             if (chooser != null) {
-                chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Бот выбрал предмет."), false);
+                chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Бот выбрал предмет." + (match.revealEvent ? " §bСобытие раскрывает предмет: " + match.roundItem.getName().getString() : "")), false);
                 sendDecisionButtons(chooser, match.claim);
             }
             return;
@@ -732,7 +734,6 @@ public final class MatchManager {
         mob.refreshPositionAndAngles(x, y, z, player.getYaw() + 180.0F, 0.0F);
         mob.setPersistent();
         mob.setCanPickUpLoot(false);
-        mob.setHealth(Math.max(1.0F, mob.getMaxHealth() * 0.75F));
         mob.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 20 * 60 * 10, 0));
         mob.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 20 * 60 * 10, 0));
         mob.setCustomName(Text.literal("Соперник: " + mob.getName().getString()));
@@ -1006,6 +1007,8 @@ public final class MatchManager {
         }
         for (ItemStack ammo : match.roundBonusItems) match.items.get(match.owner).add(ammo.copy());
         match.roundBonusItems.clear();
+        for (var stake : match.stakes.entrySet()) match.items.get(stake.getKey()).add(stake.getValue().copy());
+        match.stakes.clear();
         match.phase = Phase.FINISHED;
         distributeItems(server, match);
         matches.remove(match.first);
