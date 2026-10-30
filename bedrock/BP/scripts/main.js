@@ -344,6 +344,7 @@ function beginFinalPhase() {
       match.finalMobId = mob.id;
       mob.nameTag = "Финальный соперник";
       mob.addEffect("strength", 20 * 60 * 10, { amplifier: 1, showParticles: true });
+      restorePlayer(p);
       mob.addEffect("resistance", 20 * 60 * 10, { amplifier: 1, showParticles: true });
       try {
         const gear = mob.getComponent("minecraft:equippable");
@@ -565,6 +566,16 @@ try {
     if (chestData && ev.block.location.x===chestData.pos.x && ev.block.location.y===chestData.pos.y && ev.block.location.z===chestData.pos.z) ev.cancel=true;
   });
 } catch {}
+world.afterEvents.playerInteractWithEntity.subscribe(ev => {
+  if (!match || match.phase !== "mob_choice" || ev.target.id !== match.finalMobId || ev.player.id !== match.players[0]?.id) return;
+  new ActionFormData().title("Финальный соперник").body("Ты прошёл все раунды. Что будешь делать?")
+    .button("Сразиться")
+    .button("Уйти")
+    .show(ev.player).then(r => {
+      if (r.canceled) return;
+      mobAction(ev.player, r.selection === 0 ? "fight" : "leave");
+    }).catch(() => tell(ev.player,"Выбери !los mob fight или !los mob leave."));
+});
 world.afterEvents.playerLeave.subscribe(ev => {
   if (!match) return;
   const p=match.players.find(x=>x?.id===ev.playerId);
