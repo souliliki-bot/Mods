@@ -141,6 +141,7 @@ public final class MatchManager {
         Match match = new Match(host.getUuid(), target.getUuid(), roundsPerMatch);
         matches.put(host.getUuid(), match);
         matches.put(target.getUuid(), match);
+        teleportMatchToArena(target.getServer(), match);
         beginRound(target.getServer(), match);
         notifyBoth(target.getServer(), match, "§6Лобби заполнено! Матч начался на " + match.totalRounds + " раундов.");
     }
@@ -166,6 +167,7 @@ public final class MatchManager {
         Match match = new Match(player.getUuid(), UUID.randomUUID(), roundsPerMatch);
         match.botOpponent = true;
         matches.put(player.getUuid(), match);
+        teleportMatchToArena(player.getServer(), match);
         player.sendMessage(Text.literal("§6Ты начал матч против ИИ-бота. Бот будет принимать решения и вести свои раунды."), false);
         beginRound(player.getServer(), match);
     }
@@ -426,6 +428,7 @@ public final class MatchManager {
             Match match = new Match(a, b, roundsPerMatch);
             matches.put(a, match);
             matches.put(b, match);
+            teleportMatchToArena(server, match);
             beginRound(server, match);
             first.sendMessage(Text.literal("§6Матч начался! Всего " + match.totalRounds + " раундов."), false);
             second.sendMessage(Text.literal("§6Матч начался! Всего " + match.totalRounds + " раундов."), false);
@@ -551,7 +554,7 @@ public final class MatchManager {
         match.roundItem = ItemStack.EMPTY;
         if (match.round > match.totalRounds) {
             match.phase = Phase.DUEL;
-            teleportToArena(server, match);
+            prepareMatchParticipantsForDuel(server, match);
             if (match.botOpponent) {
                 spawnBotOpponent(server, match);
                 distributeItems(server, match);
@@ -579,17 +582,25 @@ public final class MatchManager {
         }
         if (restoreHealthEnabled || restoreHungerEnabled) player.sendMessage(Text.literal("§aПеред дуэлью параметры игрока восстановлены. Экипировка и эффекты не изменены."), false);
     }
-    private void teleportToArena(MinecraftServer server, Match match) {
+    private void teleportMatchToArena(MinecraftServer server, Match match) {
         ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
-        ServerPlayerEntity second = server.getPlayerManager().getPlayer(match.second);
+        ServerPlayerEntity second = match.botOpponent ? null : server.getPlayerManager().getPlayer(match.second);
         if (!arenaTeleportEnabled) {
-            notifyBoth(server, match, "§7Телепортация на арену отключена в настройках.");
-        } else if (arenaFirst == null || arenaSecond == null) {
-            notifyBoth(server, match, "§eТочки арены не настроены: бой начнётся на текущем месте. Используй /leaveorsteal setarena1 и setarena2.");
-        } else {
-            if (first != null) teleport(first, arenaFirst);
-            if (second != null) teleport(second, arenaSecond);
+            notifyBoth(server, match, "§7Телепортация на арену отключена в настройках. Раунды и финальный бой пройдут на текущем месте.");
+            return;
         }
+        if (arenaFirst == null || arenaSecond == null) {
+            notifyBoth(server, match, "§eАрена ещё не настроена. Оператор должен задать две точки командами /leaveorsteal setarena1 и /leaveorsteal setarena2. Пока матч проходит на текущем месте.");
+            return;
+        }
+        if (first != null) teleport(first, arenaFirst);
+        if (second != null) teleport(second, arenaSecond);
+        notifyBoth(server, match, "§aВсе участники телепортированы на арену. Здесь пройдут раунды, а затем финальная битва.");
+    }
+
+    private void prepareMatchParticipantsForDuel(MinecraftServer server, Match match) {
+        ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
+        ServerPlayerEntity second = match.botOpponent ? null : server.getPlayerManager().getPlayer(match.second);
         if (first != null) prepareForDuel(first);
         if (second != null) prepareForDuel(second);
     }
