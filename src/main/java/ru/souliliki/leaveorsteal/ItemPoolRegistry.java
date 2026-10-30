@@ -2,6 +2,7 @@ package ru.souliliki.leaveorsteal;
 
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.item.Item;
+import net.minecraft.item.BlockItem;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
 
@@ -219,6 +220,7 @@ public final class ItemPoolRegistry {
             return "namespace указан в excludedNamespaces";
         if (csv(config.getProperty("excludedItems", "")).contains(id.toString()))
             return "ID указан в excludedItems";
+        if (isDecorativeBlock(id)) return "декоративные блоки исключены из мини-игры";
         if (matchesExcludedPath(id, csv(config.getProperty("excludedPathKeywords", ""))))
             return "ID совпал с excludedPathKeywords";
         if (!isClassEnabled(chestClass)) return "класс отключён";
@@ -236,10 +238,15 @@ public final class ItemPoolRegistry {
         for (Identifier id : Registries.ITEM.getIds()) {
             if (!enabled.contains("*") && !enabled.contains(id.getNamespace())) continue;
             if (excludedNamespaces.contains(id.getNamespace()) || excludedItems.contains(id.toString()) ||
-                matchesExcludedPath(id, excludedPathKeywords)) continue;
+                isDecorativeBlock(id) || matchesExcludedPath(id, excludedPathKeywords)) continue;
             ChestClass chestClass = getClassFor(id);
             if (chestClass != null && enabledClasses.contains(chestClass.name())) pools.get(chestClass).add(id);
         }
+    }
+
+    private boolean isDecorativeBlock(Identifier id) {
+        Item item = Registries.ITEM.get(id);
+        return item instanceof BlockItem && ItemClassifier.isDecorativeBlockPath(id.getPath());
     }
 
     private boolean matchesExcludedPath(Identifier id, Set<String> excludedPathKeywords) {
