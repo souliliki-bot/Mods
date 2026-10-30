@@ -26,6 +26,7 @@ public class LeaveOrStealMod implements ModInitializer {
     @Override
     public void onInitialize() {
         PayloadTypeRegistry.playS2C().register(SettingsSyncPayload.ID, SettingsSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(LobbyMenuPayload.ID, LobbyMenuPayload.CODEC);
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             try {
                 ItemPoolRegistry.get().reload();
@@ -57,8 +58,44 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, rounds <1..30>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
+                        "Команды: menu, lobby create, invite <игрок>, accept <игрок>, decline <игрок>, bot, settings (настройки, оператор), setting <arena|health|hunger>, rounds <1..30>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
                     ), false);
+                    return 1;
+                }))
+                .then(CommandManager.literal("menu").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().showLobbyMenu(context.getSource().getPlayer());
+                    return 1;
+                }))
+                .then(CommandManager.literal("lobby").then(CommandManager.literal("create").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().createLobby(context.getSource().getPlayer());
+                    return 1;
+                })))
+                .then(CommandManager.literal("invite").then(CommandManager.argument("target", StringArgumentType.word())
+                    .suggests((context, builder) -> {
+                        context.getSource().getServer().getPlayerManager().getPlayerList().forEach(p -> builder.suggest(p.getName().getString()));
+                        return builder.buildFuture();
+                    }).executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().invite(context.getSource().getPlayer(), StringArgumentType.getString(context, "target"));
+                        return 1;
+                    })))
+                .then(CommandManager.literal("accept").then(CommandManager.argument("host", StringArgumentType.word())
+                    .executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().acceptInvite(context.getSource().getPlayer(), StringArgumentType.getString(context, "host"));
+                        return 1;
+                    })))
+                .then(CommandManager.literal("decline").then(CommandManager.argument("host", StringArgumentType.word())
+                    .executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().declineInvite(context.getSource().getPlayer(), StringArgumentType.getString(context, "host"));
+                        return 1;
+                    })))
+                .then(CommandManager.literal("bot").executes(context -> {
+                    if (context.getSource().getPlayer() == null) return 0;
+                    MatchManager.get().startBotMatch(context.getSource().getPlayer());
                     return 1;
                 }))
                 .then(CommandManager.literal("settings").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
