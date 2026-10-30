@@ -22,7 +22,16 @@ public class LeaveOrStealMod implements ModInitializer {
 
     @Override
     public void onInitialize() {
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> MatchManager.get().loadRewards(server));
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            try {
+                ItemPoolRegistry.get().reload();
+                LOGGER.info("Пулы предметов загружены после запуска сервера: {} классов сундуков",
+                    ChestClass.values().length);
+            } catch (IOException exception) {
+                LOGGER.error("Не удалось загрузить конфигурацию пулов предметов", exception);
+            }
+            MatchManager.get().loadRewards(server);
+        });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> MatchManager.get().saveOnShutdown(server));
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
@@ -32,11 +41,6 @@ public class LeaveOrStealMod implements ModInitializer {
             MatchManager.get().onDisconnect(handler.getPlayer())
         );
 
-        try {
-            ItemPoolRegistry.get().reload();
-        } catch (IOException exception) {
-            LOGGER.error("Не удалось загрузить конфигурацию пулов предметов", exception);
-        }
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             dispatcher.register(CommandManager.literal("leaveorsteal")
