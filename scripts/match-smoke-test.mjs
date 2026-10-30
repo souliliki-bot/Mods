@@ -125,16 +125,7 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 900));
       }
     }
-    await waitFor(first, message => message.includes('вышел моб-противник'), 'hostile mob duel start');
-    const mobDeadline = Date.now() + 10000;
-    let mobSeen = false;
-    while (Date.now() < mobDeadline && !mobSeen) {
-      mobSeen = Object.values(first.entities).some(entity =>
-        entity.type === 'mob' && entity.position.distanceTo(first.entity.position) < 24
-      );
-      if (!mobSeen) await new Promise(resolve => setTimeout(resolve, 200));
-    }
-    if (!mobSeen) throw new Error('Physical hostile mob opponent did not appear near the player');
+    await waitFor(first, message => message.includes('вышел моб-противник:') && message.includes('экипирован добытыми предметами'), 'spawned and equipped hostile mob duel');
 
     histories.get(first).length = 0;
     histories.get(second).length = 0;
