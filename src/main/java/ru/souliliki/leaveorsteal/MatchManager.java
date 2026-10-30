@@ -56,8 +56,7 @@ public final class MatchManager {
         }
         if (candidates.isEmpty()) {
             notifyBoth(server, match, "§cПул предметов пуст. Проверь config/leave-or-steal.properties.");
-            matches.remove(match.first);
-            matches.remove(match.second);
+            finishMatch(server, match, "§cМатч завершён: пул предметов пуст.");
             return;
         }
 
@@ -65,8 +64,7 @@ public final class MatchManager {
         Item item = Registries.ITEM.get(id);
         if (item == null) {
             notifyBoth(server, match, "§cНе удалось создать предмет раунда. Матч завершён.");
-            matches.remove(match.first);
-            matches.remove(match.second);
+            finishMatch(server, match, "§cМатч завершён: предмет раунда недоступен.");
             return;
         }
         match.roundItem = new ItemStack(item);
@@ -159,24 +157,36 @@ public final class MatchManager {
         for (UUID id : List.of(match.first, match.second)) {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
             if (player == null) continue;
-            for (ItemStack stack : match.items.get(id)) {
+            List<ItemStack> loot = match.items.get(id);
+            Iterator<ItemStack> iterator = loot.iterator();
+            while (iterator.hasNext()) {
+                ItemStack stack = iterator.next();
                 ItemStack remainder = stack.copy();
-                if (!player.getInventory().insertStack(remainder) && !remainder.isEmpty()) {
-                    player.dropItem(remainder, false);
-                }
+                player.getInventory().insertStack(remainder);
+                if (!remainder.isEmpty()) player.dropItem(remainder, false);
+                iterator.remove();
             }
-            match.items.get(id).clear();
         }
     }
 
     public synchronized void leave(ServerPlayerEntity player) {
         queue.remove(player.getUuid());
-        Match match = matches.remove(player.getUuid());
+        Match match = matches.get(player.getUuid());
         if (match != null) {
-            matches.remove(match.other(player.getUuid()));
-            ServerPlayerEntity opponent = player.getServer().getPlayerManager().getPlayer(match.other(player.getUuid()));
-            if (opponent != null) opponent.sendMessage(Text.literal("§cСоперник покинул матч. Матч завершён."), false);
+            finishMatch(player.getServer(), match, "§cСоперник покинул матч. Матч завершён, накопленные награды выданы.");
         }
+    }
+
+    private void finishMatch(MinecraftServer server, Match match, String message) {
+        if (match.roundItem != null && !match.roundItem.isEmpty()) {
+            match.items.get(match.owner).add(match.roundItem.copy());
+            match.roundItem = ItemStack.EMPTY;
+        }
+        match.phase = Phase.FINISHED;
+        distributeItems(server, match);
+        matches.remove(match.first);
+        matches.remove(match.second);
+        notifyBoth(server, match, message);
     }
 
     private void notifyBoth(MinecraftServer server, Match match, String message) {
