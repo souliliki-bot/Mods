@@ -71,7 +71,9 @@ async function playNineRounds(first, second, decisions, label, joinQueue = true)
 
     owner.chat(`/leaveorsteal claim ${label} заявление раунд ${round}`);
     await waitFor(chooser, message => message.includes(`${label} заявление раунд ${round}`), `${label}: round ${round} claim delivery`);
+    await new Promise(resolve => setTimeout(resolve, 900));
     chooser.chat(`/leaveorsteal ${decisions[round - 1]}`);
+    await new Promise(resolve => setTimeout(resolve, 900));
   }
 
   await Promise.all([
