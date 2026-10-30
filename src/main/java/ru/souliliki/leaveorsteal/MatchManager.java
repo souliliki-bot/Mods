@@ -18,7 +18,7 @@ import java.io.IOException;
 import java.util.*;
 
 public final class MatchManager {
-    public enum Phase { CLAIM, DECISION, FINISHED }
+    public enum Phase { CLAIM, DECISION, DUEL, FINISHED }
     private static final MatchManager INSTANCE = new MatchManager();
     private final Deque<UUID> queue = new ArrayDeque<>();
     private final Map<UUID, Match> matches = new HashMap<>();
@@ -172,6 +172,7 @@ public final class MatchManager {
     public synchronized String status(ServerPlayerEntity player) {
         Match match = matches.get(player.getUuid());
         if (match == null) return queue.contains(player.getUuid()) ? "Ожидание соперника" : "Не в матче";
+        if (match.phase == Phase.DUEL) return "Финальная PvP-дуэль";
         return "Раунд " + match.round + "/9, этап: " + match.phase + ", твоя роль: " +
             (match.owner.equals(player.getUuid()) ? "владелец предмета" : "принимаешь решение");
     }
@@ -231,11 +232,10 @@ public final class MatchManager {
         match.round++;
         match.roundItem = ItemStack.EMPTY;
         if (match.round > 9) {
-            match.phase = Phase.FINISHED;
+            match.phase = Phase.DUEL;
             distributeItems(player.getServer(), match);
-            notifyBoth(player.getServer(), match, "§d9 раундов завершены. Предметы выданы в инвентари. Следующий этап — арена и PvP-дуэль (ещё не реализованы).");
-            matches.remove(match.first);
-            matches.remove(match.second);
+            notifyBoth(player.getServer(), match,
+                "§d9 раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль: победит тот, кто победит соперника. Команда /leave означает сдачу.");
         } else {
             match.owner = match.other(previousOwner);
             beginRound(player.getServer(), match);
@@ -267,9 +267,20 @@ public final class MatchManager {
     public synchronized void onDisconnect(ServerPlayerEntity player) {
         queue.remove(player.getUuid());
         Match match = matches.get(player.getUuid());
-        if (match != null) {
+        if (match == null) return;
+        if (match.phase == Phase.DUEL) {
+            finishDuel(player.getServer(), match, match.other(player.getUuid()),
+                "§aСоперник отключился во время финальной дуэли. Тебе присуждена победа.");
+        } else {
             finishMatch(player.getServer(), match, "§cСоперник отключился. Матч завершён; награды будут выданы при следующем входе.");
         }
+    }
+
+    public synchronized void onDeath(ServerPlayerEntity player) {
+        Match match = matches.get(player.getUuid());
+        if (match == null || match.phase != Phase.DUEL) return;
+        finishDuel(player.getServer(), match, match.other(player.getUuid()),
+            "§aТы победил в финальной PvP-дуэли!");
     }
 
     private void deliverPendingRewards(ServerPlayerEntity player) {
@@ -287,8 +298,29 @@ public final class MatchManager {
     public synchronized void leave(ServerPlayerEntity player) {
         queue.remove(player.getUuid());
         Match match = matches.get(player.getUuid());
-        if (match != null) {
+        if (match == null) return;
+        if (match.phase == Phase.DUEL) {
+            finishDuel(player.getServer(), match, match.other(player.getUuid()),
+                "§aСоперник сдался. Ты победил в финальной PvP-дуэли.");
+            player.sendMessage(Text.literal("§cТы сдался и проиграл дуэль."), false);
+        } else {
             finishMatch(player.getServer(), match, "§cСоперник покинул матч. Матч завершён, накопленные награды выданы.");
+        }
+    }
+
+    private void finishDuel(MinecraftServer server, Match match, UUID winner, String winnerMessage) {
+        if (match.phase != Phase.DUEL) return;
+        match.phase = Phase.FINISHED;
+        matches.remove(match.first);
+        matches.remove(match.second);
+        for (UUID id : List.of(match.first, match.second)) {
+            ServerPlayerEntity participant = server.getPlayerManager().getPlayer(id);
+            if (participant == null) continue;
+            if (id.equals(winner)) {
+                participant.sendMessage(Text.literal(winnerMessage), false);
+            } else {
+                participant.sendMessage(Text.literal("§cТы проиграл финальную PvP-дуэль."), false);
+            }
         }
     }
 
