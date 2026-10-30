@@ -12,12 +12,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build
+      - name: Build and unit tests
         run: gradle build
       - name: Smoke test Fabric dedicated server
         shell: bash
@@ -52,6 +52,43 @@ jobs:
           kill "$gradle_pid" 2>/dev/null || true
           wait "$gradle_pid" 2>/dev/null || true
           echo "Fabric server did not reach the ready state within 180 seconds."
+          exit 1
+      - name: Install headless graphics dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri
+      - name: Smoke test Minecraft client and mod loading
+        shell: bash
+        run: |
+          xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 timeout 240s gradle runClient --no-daemon > client.log 2>&1 &
+          gradle_pid=$!
+
+          for attempt in $(seq 1 120); do
+            if grep -q "Setting user:" client.log && grep -q "leave_or_steal" client.log; then
+              echo "Minecraft client started and leave_or_steal appeared in the client log."
+              pkill -f '[n]et.fabricmc.devlaunchinjector.Main' || true
+              pkill -f '[n]et.fabricmc.loader.impl.launch.knot.KnotClient' || true
+              kill "$gradle_pid" 2>/dev/null || true
+              wait "$gradle_pid" 2>/dev/null || true
+              exit 0
+            fi
+
+            if ! kill -0 "$gradle_pid" 2>/dev/null; then
+              wait "$gradle_pid"
+              result=$?
+              cat client.log
+              exit "$result"
+            fi
+
+            sleep 2
+          done
+
+          cat client.log
+          pkill -f '[n]et.fabricmc.devlaunchinjector.Main' || true
+          pkill -f '[n]et.fabricmc.loader.impl.launch.knot.KnotClient' || true
+          kill "$gradle_pid" 2>/dev/null || true
+          wait "$gradle_pid" 2>/dev/null || true
+          echo "Minecraft client did not reach the expected startup markers within 240 seconds."
           exit 1
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
