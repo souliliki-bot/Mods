@@ -122,6 +122,11 @@ public final class ItemPoolRegistry {
         return List.of(new net.minecraft.item.ItemStack(Registries.ITEM.get(ammoId), count));
     }
 
+    public synchronized Identifier getRandomItem(ChestClass chestClass, Random random) {
+        if (chestClass == null || !isClassEnabled(chestClass) || pools.get(chestClass).isEmpty()) return null;
+        return pools.get(chestClass).get(random.nextInt(pools.get(chestClass).size()));
+    }
+
     public synchronized Identifier getRandomItem(Random random) {
         long totalWeight = 0L;
         for (ChestClass chestClass : ChestClass.values()) {
