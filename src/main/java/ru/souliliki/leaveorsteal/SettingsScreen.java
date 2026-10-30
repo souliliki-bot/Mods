@@ -6,27 +6,56 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
 
+import java.util.List;
+
 public final class SettingsScreen extends Screen {
     private final boolean arenaTeleport;
     private final boolean restoreHealth;
     private final boolean restoreHunger;
+    private final List<Integer> classWeights;
 
-    public SettingsScreen(boolean arenaTeleport, boolean restoreHealth, boolean restoreHunger) {
+    public SettingsScreen(boolean arenaTeleport, boolean restoreHealth, boolean restoreHunger,
+                          List<Integer> classWeights) {
         super(Text.literal("Обман и доверие — настройки"));
         this.arenaTeleport = arenaTeleport;
         this.restoreHealth = restoreHealth;
         this.restoreHunger = restoreHunger;
+        this.classWeights = List.copyOf(classWeights);
     }
 
     @Override
     protected void init() {
         int center = width / 2;
-        int top = height / 2 - 55;
+        int top = Math.max(8, height / 2 - 135);
         addDrawableChild(toggleButton(center, top, "Телепортация на арену", "arena", arenaTeleport));
-        addDrawableChild(toggleButton(center, top + 28, "Восстановление здоровья", "health", restoreHealth));
-        addDrawableChild(toggleButton(center, top + 56, "Восстановление голода", "hunger", restoreHunger));
+        addDrawableChild(toggleButton(center, top + 23, "Восстановление здоровья", "health", restoreHealth));
+        addDrawableChild(toggleButton(center, top + 46, "Восстановление голода", "hunger", restoreHunger));
+
+        for (ChestClass chestClass : ChestClass.values()) {
+            int index = chestClass.ordinal();
+            int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
+            int y = top + 83 + index * 22;
+            String name = chestClass.name().toLowerCase(java.util.Locale.ROOT);
+            addDrawableChild(ButtonWidget.builder(Text.literal("−"), button ->
+                sendWeight(name, Math.max(0, weight - 1)))
+                .dimensions(center - 125, y, 28, 20).build());
+            addDrawableChild(ButtonWidget.builder(Text.literal(chestClass.displayName() + ": " + weight), button -> {})
+                .dimensions(center - 93, y, 186, 20).build());
+            addDrawableChild(ButtonWidget.builder(Text.literal("+"), button ->
+                sendWeight(name, Math.min(100000, weight + 1)))
+                .dimensions(center + 97, y, 28, 20).build());
+        }
+
+        int closeY = top + 83 + ChestClass.values().length * 22 + 7;
         addDrawableChild(ButtonWidget.builder(Text.literal("Закрыть"), button -> close())
-            .dimensions(center - 100, top + 96, 200, 20).build());
+            .dimensions(center - 100, closeY, 200, 20).build());
+    }
+
+    private void sendWeight(String className, int weight) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.getNetworkHandler() != null) {
+            client.getNetworkHandler().sendChatCommand("leaveorsteal weight " + className + " " + weight);
+        }
     }
 
     private ButtonWidget toggleButton(int center, int y, String label, String key, boolean enabled) {
@@ -43,10 +72,10 @@ public final class SettingsScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
         super.render(context, mouseX, mouseY, delta);
-        context.drawCenteredTextWithShadow(textRenderer, title, width / 2, height / 2 - 85, 0xFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer, title, width / 2, Math.max(0, height / 2 - 155), 0xFFFFFF);
         context.drawCenteredTextWithShadow(textRenderer,
-            Text.literal("Изменения сохраняются на сервере автоматически."),
-            width / 2, height / 2 + 70, 0xA0A0A0);
+            Text.literal("Вес выпадения классов • изменения сохраняются автоматически"),
+            width / 2, height - 12, 0xA0A0A0);
     }
 
     @Override
