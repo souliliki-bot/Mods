@@ -10,6 +10,7 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.world.World;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.util.Identifier;
 import net.minecraft.registry.RegistryOps;
@@ -77,7 +78,7 @@ public final class MatchManager {
     }
 
     private void sendSetting(ServerPlayerEntity player, String label, String key, boolean enabled) {
-        Text.MutableText line = Text.literal("§f" + label + ": ");
+        MutableText line = Text.literal("§f" + label + ": ");
         Text button = Text.literal(enabled ? "[ВКЛ]" : "[ВЫКЛ]").styled(style ->
             style.withColor(enabled ? 0x55FF55 : 0xFF5555)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal setting " + key)));
