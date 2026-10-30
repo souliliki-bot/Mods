@@ -94,6 +94,30 @@ public final class ItemPoolRegistry {
         return classifyByDefault(id);
     }
 
+    public synchronized String describeClassification(Identifier id) {
+        if (id == null || !Registries.ITEM.containsId(id)) {
+            return "Предмет не найден в реестре сервера.";
+        }
+        String override = config.getProperty("item." + id, "").trim();
+        if (!override.isEmpty()) {
+            ChestClass manual = parseClass(override);
+            if (manual != null) return formatClassification(manual, "ручное правило item." + id);
+        }
+        ChestClass integration = ItemClassificationRegistry.get().classify(id);
+        if (integration != null) return formatClassification(integration, "интеграция стороннего мода");
+        ChestClass namespace = parseClass(config.getProperty("namespace." + id.getNamespace(), ""));
+        if (namespace != null) return formatClassification(namespace, "правило namespace." + id.getNamespace());
+        ChestClass pathClass = classifyByConfiguredPath(id);
+        if (pathClass != null) return formatClassification(pathClass, "правило path.<КЛАСС>");
+        return formatClassification(classifyByDefault(id), "встроенная классификация по ID");
+    }
+
+    private String formatClassification(ChestClass chestClass, String source) {
+        return "Класс: " + chestClass.name() + " — " + chestClass.displayName() +
+            "\nИсточник: " + source +
+            "\nКласс включён: " + isClassEnabled(chestClass);
+    }
+
     private void rebuildPools() {
         pools.values().forEach(List::clear);
         Set<String> enabled = csv(config.getProperty("enabledNamespaces", "*"));
