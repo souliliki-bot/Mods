@@ -98,6 +98,7 @@ public final class ItemPoolRegistry {
         if (id == null || !Registries.ITEM.containsId(id)) {
             return "Предмет не найден в реестре сервера.";
         }
+        inspectionItemId = id;
         String override = config.getProperty("item." + id, "").trim();
         if (!override.isEmpty()) {
             ChestClass manual = parseClass(override);
@@ -113,9 +114,38 @@ public final class ItemPoolRegistry {
     }
 
     private String formatClassification(ChestClass chestClass, String source) {
-        return "Класс: " + chestClass.name() + " — " + chestClass.displayName() +
-            "\nИсточник: " + source +
-            "\nКласс включён: " + isClassEnabled(chestClass);
+        StringBuilder result = new StringBuilder("Класс: ")
+            .append(chestClass.name()).append(" — ").append(chestClass.displayName())
+            .append("\\nИсточник: ").append(source);
+        String exclusion = getPoolExclusionReason(chestClass, sourceItemId(source));
+        result.append("\\nКласс включён: ").append(isClassEnabled(chestClass));
+        if (exclusion == null) {
+            result.append("\\nВ пуле: ").append(pools.get(chestClass).contains(sourceItemId(source)) ? "да" : "нет");
+        } else {
+            result.append("\\nВ пуле: нет (").append(exclusion).append(")");
+        }
+        return result.toString();
+    }
+
+    private Identifier sourceItemId(String ignored) {
+        // The current inspection ID is supplied by the dedicated overload below.
+        return inspectionItemId;
+    }
+
+    private Identifier inspectionItemId;
+
+    private String getPoolExclusionReason(ChestClass chestClass, Identifier id) {
+        Set<String> enabledNamespaces = csv(config.getProperty("enabledNamespaces", "*"));
+        if (!enabledNamespaces.contains("*") && !enabledNamespaces.contains(id.getNamespace()))
+            return "namespace отключён в enabledNamespaces";
+        if (csv(config.getProperty("excludedNamespaces", "")).contains(id.getNamespace()))
+            return "namespace указан в excludedNamespaces";
+        if (csv(config.getProperty("excludedItems", "")).contains(id.toString()))
+            return "ID указан в excludedItems";
+        if (matchesExcludedPath(id, csv(config.getProperty("excludedPathKeywords", ""))))
+            return "ID совпал с excludedPathKeywords";
+        if (!isClassEnabled(chestClass)) return "класс отключён";
+        return null;
     }
 
     private void rebuildPools() {
