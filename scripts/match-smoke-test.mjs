@@ -51,10 +51,12 @@ function waitForSpawn(bot, username) {
   });
 }
 
-async function playNineRounds(first, second, decisions, label) {
-  first.chat('/leaveorsteal join');
-  await waitFor(first, message => message.includes('добавлен в очередь'), `${label}: first player queue confirmation`);
-  second.chat('/leaveorsteal join');
+async function playNineRounds(first, second, decisions, label, joinQueue = true) {
+  if (joinQueue) {
+    first.chat('/leaveorsteal join');
+    await waitFor(first, message => message.includes('добавлен в очередь'), `${label}: first player queue confirmation`);
+    second.chat('/leaveorsteal join');
+  }
 
   for (let round = 1; round <= 9; round++) {
     const owner = round % 2 === 1 ? first : second;
@@ -103,11 +105,31 @@ async function main() {
       waitFor(second, message => message.includes('Соперник сдался'), 'duel win message')
     ]);
 
-    await playNineRounds(first, second, Array(9).fill('keep'), 'CI disconnect match');
+    first.chat('/leaveorsteal bot');
+    await waitFor(first, message => message.includes('начал матч против ИИ-бота'), 'bot match start');
+    for (let round = 1; round <= 9; round++) {
+      if (round % 2 === 1) {
+        await waitFor(first, message => message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет'), `bot match round ${round} human item`);
+        first.chat(`/leaveorsteal claim CI бот заявление раунд ${round}`);
+        await waitFor(first, message => message.includes('Бот ') && (message.includes('украсть') || message.includes('поверил')), `bot decision in round ${round}`);
+      } else {
+        await waitFor(first, message => message.includes(`Раунд ${round}/9`) && message.includes('Бот выбрал предмет'), `bot item in round ${round}`);
+        first.chat('/leaveorsteal keep');
+      }
+    }
+    await waitFor(first, message => message.includes('победил ИИ-бота') || message.includes('проиграл финальную PvP-дуэль'), 'simulated bot duel result');
+
+    first.chat('/leaveorsteal lobby create');
+    await waitFor(first, message => message.includes('Лобби создано'), 'private lobby creation');
+    first.chat('/leaveorsteal invite LeaveStealTestB');
+    await waitFor(second, message => message.includes('приглашает тебя'), 'lobby invitation received');
+    second.chat('/leaveorsteal accept LeaveStealTestA');
+    await waitFor(first, message => message.includes('Лобби заполнено'), 'lobby invitation accepted');
+    await playNineRounds(first, second, Array(9).fill('keep'), 'CI disconnect match', false);
     first.quit('Simulate disconnect during duel');
     await waitFor(second, message => message.includes('Соперник отключился во время финальной дуэли'), 'disconnect awards duel victory');
 
-    console.log('MATCH_SMOKE_TEST_SUCCESS: two 9-round matches, keep/steal, rewards for both players, duel transition, surrender and duel disconnect passed.');
+    console.log('MATCH_SMOKE_TEST_SUCCESS: human queue match, surrender, AI match, private lobby invitation/acceptance, nine rounds and duel disconnect passed.');
   } finally {
     for (const bot of bots) {
       try { bot.quit('CI test complete'); } catch {}
