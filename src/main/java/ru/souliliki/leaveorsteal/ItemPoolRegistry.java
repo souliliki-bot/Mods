@@ -166,7 +166,12 @@ public final class ItemPoolRegistry {
         if (namespace != null) return formatClassification(id, namespace, "правило namespace." + id.getNamespace());
         ChestClass pathClass = classifyByConfiguredPath(id);
         if (pathClass != null) return formatClassification(id, pathClass, "правило path.<КЛАСС>");
-        return formatClassification(id, classifyByDefault(id), "встроенная классификация по ID");
+        ChestClass defaultClass = classifyByDefault(id);
+        if (defaultClass == null) {
+            return "Класс: не определён\nИсточник: ни одно правило классификации не подошло"
+                + "\nВ пуле: нет (не удалось классифицировать предмет)";
+        }
+        return formatClassification(id, defaultClass, "встроенная классификация по ID");
     }
 
     private String formatClassification(Identifier id, ChestClass chestClass, String source) {
