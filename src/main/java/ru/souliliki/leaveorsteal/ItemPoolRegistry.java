@@ -40,6 +40,8 @@ public final class ItemPoolRegistry {
         addedDefaults |= config.putIfAbsent("weight.POTIONS_FOOD", "5") == null;
         addedDefaults |= config.putIfAbsent("weight.RARE", "4") == null;
         addedDefaults |= config.putIfAbsent("weight.LEGENDARY", "1") == null;
+        addedDefaults |= config.putIfAbsent("ammo.minecraft:bow", "minecraft:arrow,16") == null;
+        addedDefaults |= config.putIfAbsent("ammo.minecraft:crossbow", "minecraft:arrow,16") == null;
         addedDefaults |= config.putIfAbsent("enabledClasses",
             String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList())) == null;
         addedDefaults |= config.putIfAbsent("# namespace.<modid>=<CHEST_CLASS>",
@@ -96,6 +98,27 @@ public final class ItemPoolRegistry {
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    /**
+     * Returns configured ammunition bundled with a weapon. Config format:
+     * ammo.<weapon namespace:id>=<ammo namespace:id>,<count>
+     */
+    public synchronized List<net.minecraft.item.ItemStack> getAmmunitionFor(Identifier weaponId) {
+        String value = config.getProperty("ammo." + weaponId, "").trim();
+        if (value.isEmpty()) return List.of();
+        String[] parts = value.split(",", 2);
+        if (parts.length != 2) return List.of();
+        Identifier ammoId = Identifier.tryParse(parts[0].trim());
+        if (ammoId == null || !Registries.ITEM.containsId(ammoId)) return List.of();
+        int count;
+        try {
+            count = Integer.parseInt(parts[1].trim());
+        } catch (NumberFormatException ignored) {
+            return List.of();
+        }
+        if (count < 1 || count > 576) return List.of();
+        return List.of(new net.minecraft.item.ItemStack(Registries.ITEM.get(ammoId), count));
     }
 
     public synchronized Identifier getRandomItem(Random random) {
@@ -268,6 +291,8 @@ public final class ItemPoolRegistry {
         config.setProperty("# path.<CHEST_CLASS>", "Example: path.LEGENDARY=ruby,ancient,artifact");
         config.setProperty("excludedPathKeywords",
             "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book");
+        config.setProperty("ammo.minecraft:bow", "minecraft:arrow,16");
+        config.setProperty("ammo.minecraft:crossbow", "minecraft:arrow,16");
         config.setProperty("# item.<namespace:item>=<CHEST_CLASS>", "Example: item.minecraft:diamond_sword=DIAMOND_GEAR");
         try (Writer writer = Files.newBufferedWriter(configPath)) {
             config.store(writer, "Leave or Steal item pools. Chest classes: " +
