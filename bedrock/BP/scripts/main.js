@@ -24,12 +24,17 @@ let chestData;
 let chestCooldown = 0;
 
 function loadState() {
-  const fallback = { stats: {}, settings: { itemOverrides: {}, rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
+  const fallback = { stats: {}, settings: { itemOverrides: {}, enabledNamespaces: ["*"], excludedNamespaces: [], excludedItems: [], excludedPathKeywords: ["stairs","slab","fence","fence_gate","door","trapdoor","carpet","banner","torch","lantern","flower","glass","wool","concrete","terracotta","pane","button","pressure_plate","sign","sapling","leaves","planks","log","wall","candle","coral","pot"], ammoMappings: {}, rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
   try {
     const raw = world.getDynamicProperty(STORAGE);
     if (!raw || typeof raw !== "string") return fallback;
     const parsed = JSON.parse(raw);
-    return { ...fallback, ...parsed, settings: { ...fallback.settings, ...(parsed.settings ?? {}), itemOverrides: { ...(fallback.settings.itemOverrides ?? {}), ...(parsed.settings?.itemOverrides ?? {}) } }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) }, pendingEscrow: parsed.pendingEscrow ?? {} };
+    return { ...fallback, ...parsed, settings: { ...fallback.settings, ...(parsed.settings ?? {}), itemOverrides: { ...(fallback.settings.itemOverrides ?? {}), ...(parsed.settings?.itemOverrides ?? {}) },
+      enabledNamespaces: parsed.settings?.enabledNamespaces ?? fallback.settings.enabledNamespaces,
+      excludedNamespaces: parsed.settings?.excludedNamespaces ?? [],
+      excludedItems: parsed.settings?.excludedItems ?? [],
+      excludedPathKeywords: parsed.settings?.excludedPathKeywords ?? fallback.settings.excludedPathKeywords,
+      ammoMappings: { ...(fallback.settings.ammoMappings ?? {}), ...(parsed.settings?.ammoMappings ?? {}) } }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) }, pendingEscrow: parsed.pendingEscrow ?? {} };
   } catch { return fallback; }
 }
 function saveState() { try { world.setDynamicProperty(STORAGE, JSON.stringify(state)); } catch {} }
@@ -37,6 +42,7 @@ function tell(p, msg) { try { p.sendMessage(PREFIX + msg); } catch {} }
 function players() { return world.getAllPlayers(); }
 function onlineByName(name) { return players().find(p => p.name.toLowerCase() === name.toLowerCase()); }
 function inMatch(p) { return !!match && match.players.some(x => x?.id === p.id); }
+function isAdmin(p) { try { return p.commandPermissionLevel >= 2; } catch { return false; } }
 function announce(msg) { if (match) for (const p of match.players) if (p) tell(p, msg); }
 function stats(p) { return state.stats[p.id] ?? (state.stats[p.id] = { wins: 0, losses: 0, rounds: 0, steals: 0, kept: 0 }); }
 function stat(p, key, amount = 1) {
@@ -60,8 +66,9 @@ function give(p, typeId, amount = 1) {
     const item = new ItemStack(typeId, Math.max(1, amount));
     const left = inv?.addItem(item);
     if (!inv || left) p.dimension.spawnItem(left ?? item, p.location);
-    if (typeId === "minecraft:bow" || typeId === "minecraft:crossbow") {
-      const arrows = new ItemStack("minecraft:arrow", 16);
+    const ammo = state.settings.ammoMappings?.[typeId] ?? ((typeId === "minecraft:bow" || typeId === "minecraft:crossbow") ? { id: "minecraft:arrow", amount: 16 } : null);
+    if (ammo) {
+      const arrows = new ItemStack(ammo.id, Math.max(1, Math.min(64, ammo.amount)));
       const remainder = inv?.addItem(arrows);
       if (!inv || remainder) p.dimension.spawnItem(remainder ?? arrows, p.location);
     }
@@ -97,11 +104,13 @@ function weightedClass() {
   return enabled[0];
 }
 function classifyItem(id) {
+  const [namespace,pathRaw] = id.split(":");
+  const path = (pathRaw ?? "").toLowerCase();
+  if (state.settings.excludedNamespaces?.includes(namespace) || state.settings.excludedItems?.includes(id)) return null;
+  if (!state.settings.enabledNamespaces?.includes("*") && !state.settings.enabledNamespaces?.includes(namespace)) return null;
+  if ((state.settings.excludedPathKeywords ?? []).some(word => path.includes(word))) return null;
   const override = state.settings.itemOverrides?.[id];
   if (override && CLASSES.includes(override)) return override;
-  const path = id.split(":").pop().toLowerCase();
-  const excluded = ["stairs","slab","fence","fence_gate","door","trapdoor","carpet","banner","torch","lantern","flower","glass","wool","concrete","terracotta","pane","button","pressure_plate","sign","sapling","leaves","planks","log","wall","candle","coral","pot"];
-  if (excluded.some(word => path.includes(word))) return null;
   if (/netherite.*(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots)/.test(path)) return "NETHERITE_GEAR";
   if (/diamond.*(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots)/.test(path)) return "DIAMOND_GEAR";
   if (/iron.*(sword|pickaxe|axe|shovel|hoe|helmet|chestplate|leggings|boots)/.test(path)) return "IRON_GEAR";
@@ -527,11 +536,12 @@ function command(p, raw) {
       finishMatch(opponent,p,p.name+" сдался.");
     } else { announce(p.name+" покинул матч."); returnEscrow(); cleanChest(); match=undefined; }
   }
-  else if (cmd === "setarena1") setArena(p,"first");
-  else if (cmd === "setarena2") setArena(p,"second");
-  else if (cmd === "settings") showSettings(p);
-  else if (cmd === "rounds") { const n=Math.max(1,Math.min(30,Number(parts[2])||9)); state.settings.rounds=n; saveState(); tell(p,"Число раундов: "+n); }
+  else if (cmd === "setarena1") { if (!isAdmin(p)) return tell(p,"Нужны права оператора."); setArena(p,"first"); }
+  else if (cmd === "setarena2") { if (!isAdmin(p)) return tell(p,"Нужны права оператора."); setArena(p,"second"); }
+  else if (cmd === "settings") { if (!isAdmin(p)) return tell(p,"Настройки доступны только оператору мира."); showSettings(p); }
+  else if (cmd === "rounds") { if (!isAdmin(p)) return tell(p,"Нужны права оператора."); const n=Math.max(1,Math.min(30,Number(parts[2])||9)); state.settings.rounds=n; saveState(); tell(p,"Число раундов: "+n); }
   else if (cmd === "class") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
     const name=(parts[2]??"").toUpperCase();
     if (!CLASSES.includes(name)) return tell(p,"Неизвестный класс: "+name);
     if (state.settings.enabledClasses.includes(name)) state.settings.enabledClasses=state.settings.enabledClasses.filter(x=>x!==name);
@@ -539,6 +549,7 @@ function command(p, raw) {
     saveState(); tell(p,"Класс "+name+" обновлён.");
   }
   else if (cmd === "weight") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
     const name=(parts[2]??"").toUpperCase(), value=Number(parts[3]);
     if (!CLASSES.includes(name) || !Number.isFinite(value) || value<0 || value>100000) return tell(p,"Формат: !los weight <класс> <0-100000>");
     state.settings.weights[name]=value; saveState(); tell(p,"Вес "+name+" установлен: "+value);
@@ -549,10 +560,52 @@ function command(p, raw) {
     tell(p,exists ? id+" — класс "+(classifyItem(id)??"ИСКЛЮЧЁН") : "Предмет не найден: "+id);
   }
   else if (cmd === "itemclass") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
     const id=parts[2]??"", cls=(parts[3]??"").toUpperCase();
     if (!id.includes(":") || !CLASSES.includes(cls)) return tell(p,"Формат: !los itemclass namespace:item КЛАСС");
     state.settings.itemOverrides ??= {}; state.settings.itemOverrides[id]=cls; saveState(); tell(p,"Для "+id+" задан класс "+cls+".");
   }
+  else if (cmd === "namespace") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
+    const action=(parts[2]??"").toLowerCase(), ns=(parts[3]??"").toLowerCase();
+    if (!ns) return tell(p,"Формат: !los namespace enable|disable <namespace>");
+    if (action==="enable") {
+      state.settings.enabledNamespaces=state.settings.enabledNamespaces.filter(x=>x!=="*");
+      if (!state.settings.enabledNamespaces.includes(ns)) state.settings.enabledNamespaces.push(ns);
+    } else if (action==="disable") {
+      if (!state.settings.excludedNamespaces.includes(ns)) state.settings.excludedNamespaces.push(ns);
+    } else return tell(p,"Формат: !los namespace enable|disable <namespace>");
+    saveState(); tell(p,"Фильтр namespace обновлён.");
+  }
+  else if (cmd === "exclude") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
+    const kind=(parts[2]??"").toLowerCase(), value=(parts[3]??"").toLowerCase();
+    if (!value) return tell(p,"Формат: !los exclude item <namespace:id> или !los exclude namespace <namespace>");
+    const list=kind==="item" ? state.settings.excludedItems : kind==="namespace" ? state.settings.excludedNamespaces : null;
+    if (!list) return tell(p,"Укажи item или namespace.");
+    if (!list.includes(value)) list.push(value);
+    saveState(); tell(p,"Исключение добавлено: "+value);
+  }
+  else if (cmd === "include") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
+    const kind=(parts[2]??"").toLowerCase(), value=(parts[3]??"").toLowerCase();
+    const list=kind==="item" ? state.settings.excludedItems : kind==="namespace" ? state.settings.excludedNamespaces : null;
+    if (!list || !value) return tell(p,"Формат: !los include item|namespace <значение>");
+    state.settings[kind==="item"?"excludedItems":"excludedNamespaces"]=list.filter(x=>x!==value);
+    saveState(); tell(p,"Исключение снято: "+value);
+  }
+  else if (cmd === "ammo") {
+    if (!isAdmin(p)) return tell(p,"Нужны права оператора.");
+    const weapon=parts[2]??"", ammo=parts[3]??"", amount=Math.max(1,Math.min(64,Number(parts[4])||16));
+    if (!weapon.includes(":") || !ammo.includes(":")) return tell(p,"Формат: !los ammo <namespace:оружие> <namespace:боеприпас> <количество>");
+    state.settings.ammoMappings[weapon]={id:ammo,amount}; saveState(); tell(p,"Боеприпасы для "+weapon+" настроены.");
+  }
+  else if (cmd === "items") {
+    const ns=parts[2]??"minecraft";
+    let count=0; try { count=ItemTypes.getAll().filter(item=>item.id.startsWith(ns+":")).length; } catch {}
+    tell(p,"Предметов namespace "+ns+": "+count);
+  }
+  else if (cmd === "reloadconfig") { saveState(); tell(p,"Настройки и пул предметов перечитаны из сохранённых данных мира."); }
   else if (cmd === "classes") tell(p,"Классы: "+CLASSES.join(", "));
   else if (cmd === "pool") tell(p,CLASSES.map(c=>c+": "+getItemPool(c).length+" предметов; вес "+state.settings.weights[c]).join("\n"));
   else tell(p,"Неизвестная команда. !los help");
