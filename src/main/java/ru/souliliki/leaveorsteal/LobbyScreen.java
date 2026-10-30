@@ -30,7 +30,7 @@ public final class LobbyScreen extends Screen {
             .dimensions(center + 5, top, 145, 24).build());
 
         int y = top + 54;
-        int maxRows = Math.max(1, Math.min(onlinePlayers.size(), 7));
+        int maxRows = Math.min(onlinePlayers.size(), 7);
         for (int i = 0; i < maxRows; i++) {
             String name = onlinePlayers.get(i);
             if (name.equals(MinecraftClient.getInstance().getSession().getUsername())) continue;
