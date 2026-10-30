@@ -634,12 +634,20 @@ function command(p, raw) {
   else if (cmd === "pool") tell(p,CLASSES.map(c=>c+": "+getItemPool(c).length+" предметов; вес "+state.settings.weights[c]).join("\n"));
   else tell(p,"Неизвестная команда. !los help");
 }
-world.beforeEvents.chatSend.subscribe(ev => {
-  if (!ev.message.trim().toLowerCase().startsWith("!los")) return;
-  ev.cancel = true;
-  const p=ev.sender, raw=ev.message;
-  system.run(()=>command(p,raw));
-});
+// Chat interception is not available in every Bedrock runtime unless the
+// corresponding experimental API is enabled. Never let it abort the whole script.
+try {
+  world.beforeEvents.chatSend.subscribe(ev => {
+    if (!ev.message.trim().toLowerCase().startsWith("!los")) return;
+    ev.cancel = true;
+    const p=ev.sender, raw=ev.message;
+    system.run(()=>command(p,raw));
+  });
+} catch (error) {
+  system.runTimeout(() => {
+    for (const p of players()) tell(p, "§eКоманды чата недоступны в этой версии/настройке игры. Сенсорное меню должно работать отдельно.");
+  }, 80);
+}
 try {
   world.afterEvents.playerInteractWithBlock.subscribe(ev => {
     if (chestData && ev.block.typeId==="minecraft:chest" && ev.block.location.x===chestData.pos.x && ev.block.location.y===chestData.pos.y && ev.block.location.z===chestData.pos.z) {
