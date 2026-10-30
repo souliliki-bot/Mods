@@ -55,6 +55,8 @@ async function playNineRounds(first, second, decisions, label, joinQueue = true)
   if (joinQueue) {
     first.chat('/leaveorsteal join');
     await waitFor(first, message => message.includes('добавлен в очередь'), `${label}: first player queue confirmation`);
+    histories.get(first).length = 0;
+    histories.get(second).length = 0;
     second.chat('/leaveorsteal join');
   }
 
@@ -105,6 +107,8 @@ async function main() {
       waitFor(second, message => message.includes('Соперник сдался'), 'duel win message')
     ]);
 
+    histories.get(first).length = 0;
+    histories.get(second).length = 0;
     first.chat('/leaveorsteal bot');
     await waitFor(first, message => message.includes('начал матч против ИИ-бота'), 'bot match start');
     for (let round = 1; round <= 9; round++) {
@@ -119,10 +123,14 @@ async function main() {
     }
     await waitFor(first, message => message.includes('победил ИИ-бота') || message.includes('проиграл финальную PvP-дуэль'), 'simulated bot duel result');
 
+    histories.get(first).length = 0;
+    histories.get(second).length = 0;
     first.chat('/leaveorsteal lobby create');
     await waitFor(first, message => message.includes('Лобби создано'), 'private lobby creation');
     first.chat('/leaveorsteal invite LeaveStealTestB');
     await waitFor(second, message => message.includes('приглашает тебя'), 'lobby invitation received');
+    histories.get(first).length = 0;
+    histories.get(second).length = 0;
     second.chat('/leaveorsteal accept LeaveStealTestA');
     await waitFor(first, message => message.includes('Лобби заполнено'), 'lobby invitation accepted');
     await playNineRounds(first, second, Array(9).fill('keep'), 'CI disconnect match', false);
