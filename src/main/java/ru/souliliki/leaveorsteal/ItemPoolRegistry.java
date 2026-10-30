@@ -44,6 +44,24 @@ public final class ItemPoolRegistry {
 
     public synchronized int count(ChestClass chestClass) { return pools.get(chestClass).size(); }
 
+    public synchronized boolean isClassEnabled(ChestClass chestClass) {
+        return csv(config.getProperty("enabledClasses",
+            String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList())))
+            .contains(chestClass.name());
+    }
+
+    public synchronized void toggleClass(ChestClass chestClass) throws IOException {
+        Set<String> enabled = csv(config.getProperty("enabledClasses",
+            String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList())));
+        if (!enabled.remove(chestClass.name())) enabled.add(chestClass.name());
+        config.setProperty("enabledClasses", String.join(",", enabled));
+        try (Writer writer = Files.newBufferedWriter(configPath)) {
+            config.store(writer, "Leave or Steal item pools. Chest classes: " +
+                String.join(", ", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
+        }
+        rebuildPools();
+    }
+
     public synchronized List<Identifier> getItems(ChestClass chestClass) {
         return List.copyOf(pools.get(chestClass));
     }
@@ -68,12 +86,14 @@ public final class ItemPoolRegistry {
         Set<String> excludedNamespaces = csv(config.getProperty("excludedNamespaces", ""));
         Set<String> excludedItems = csv(config.getProperty("excludedItems", ""));
         Set<String> excludedPathKeywords = csv(config.getProperty("excludedPathKeywords", ""));
+        Set<String> enabledClasses = csv(config.getProperty("enabledClasses",
+            String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList())));
         for (Identifier id : Registries.ITEM.getIds()) {
             if (!enabled.contains("*") && !enabled.contains(id.getNamespace())) continue;
             if (excludedNamespaces.contains(id.getNamespace()) || excludedItems.contains(id.toString()) ||
                 matchesExcludedPath(id, excludedPathKeywords)) continue;
             ChestClass chestClass = getClassFor(id);
-            if (chestClass != null) pools.get(chestClass).add(id);
+            if (chestClass != null && enabledClasses.contains(chestClass.name())) pools.get(chestClass).add(id);
         }
     }
 
@@ -100,6 +120,7 @@ public final class ItemPoolRegistry {
         config.setProperty("enabledNamespaces", "*");
         config.setProperty("excludedNamespaces", "");
         config.setProperty("excludedItems", "");
+        config.setProperty("enabledClasses", String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
         config.setProperty("excludedPathKeywords",
             "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book");
         config.setProperty("# item.<namespace:item>=<CHEST_CLASS>", "Example: item.minecraft:diamond_sword=DIAMOND_GEAR");
