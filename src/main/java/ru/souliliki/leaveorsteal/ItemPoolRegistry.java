@@ -30,6 +30,8 @@ public final class ItemPoolRegistry {
             config.clear();
             config.load(reader);
         }
+        config.putIfAbsent("excludedPathKeywords",
+            "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book");
         rebuildPools();
     }
 
@@ -55,12 +57,22 @@ public final class ItemPoolRegistry {
         Set<String> enabled = csv(config.getProperty("enabledNamespaces", "*"));
         Set<String> excludedNamespaces = csv(config.getProperty("excludedNamespaces", ""));
         Set<String> excludedItems = csv(config.getProperty("excludedItems", ""));
+        Set<String> excludedPathKeywords = csv(config.getProperty("excludedPathKeywords", ""));
         for (Identifier id : Registries.ITEM.getIds()) {
             if (!enabled.contains("*") && !enabled.contains(id.getNamespace())) continue;
-            if (excludedNamespaces.contains(id.getNamespace()) || excludedItems.contains(id.toString())) continue;
+            if (excludedNamespaces.contains(id.getNamespace()) || excludedItems.contains(id.toString()) ||
+                matchesExcludedPath(id, excludedPathKeywords)) continue;
             ChestClass chestClass = getClassFor(id);
             if (chestClass != null) pools.get(chestClass).add(id);
         }
+    }
+
+    private boolean matchesExcludedPath(Identifier id, Set<String> excludedPathKeywords) {
+        String path = id.getPath().toLowerCase(Locale.ROOT);
+        for (String keyword : excludedPathKeywords) {
+            if (!keyword.isBlank() && path.contains(keyword.toLowerCase(Locale.ROOT))) return true;
+        }
+        return false;
     }
 
     private ChestClass classifyByDefault(Identifier id, Item item) {
@@ -98,7 +110,9 @@ public final class ItemPoolRegistry {
         config.setProperty("enabledNamespaces", "*");
         config.setProperty("excludedNamespaces", "");
         config.setProperty("excludedItems", "");
-        config.setProperty("# item.<namespace:item>=<CHEST_CLASS>", "Example: item:minecraft:diamond_sword=DIAMOND_GEAR");
+        config.setProperty("excludedPathKeywords",
+            "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book");
+        config.setProperty("# item.<namespace:item>=<CHEST_CLASS>", "Example: item.minecraft:diamond_sword=DIAMOND_GEAR");
         try (Writer writer = Files.newBufferedWriter(configPath)) {
             config.store(writer, "Leave or Steal item pools. Chest classes: " +
                 String.join(", ", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
