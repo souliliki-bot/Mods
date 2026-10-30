@@ -25,6 +25,9 @@ public class LeaveOrStealMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> MatchManager.get().loadRewards(server));
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> MatchManager.get().saveOnShutdown(server));
 
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+            MatchManager.get().onJoin(handler.getPlayer())
+        );
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
             MatchManager.get().onDisconnect(handler.getPlayer())
         );
