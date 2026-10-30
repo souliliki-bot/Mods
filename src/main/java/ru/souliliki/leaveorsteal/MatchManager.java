@@ -116,7 +116,7 @@ public final class MatchManager {
         invitation.append(Text.literal("§a[Принять]").styled(style -> style.withClickEvent(
             new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal accept " + host.getName().getString()))));
         invitation.append(Text.literal(" §c[Отклонить]").styled(style -> style.withClickEvent(
-            new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal decline " + host.getName().getString())));
+            new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal decline " + host.getName().getString()))));
         target.sendMessage(invitation, false);
         host.sendMessage(Text.literal("§aПриглашение отправлено игроку " + target.getName().getString() + "."), false);
     }
