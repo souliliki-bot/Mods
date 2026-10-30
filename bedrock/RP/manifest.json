@@ -4,18 +4,32 @@
     "name": "Обман и доверие — Resource Pack",
     "description": "Ресурсы режима «Обман и доверие»",
     "uuid": "3b5c8d02-9e43-4f60-b172-4a0c6d8e2f53",
-    "version": [0, 1, 1],
-    "min_engine_version": [1, 26, 30]
+    "version": [
+      0,
+      1,
+      2
+    ],
+    "min_engine_version": [
+      1,
+      26,
+      30
+    ]
   },
   "modules": [
     {
       "type": "resources",
       "uuid": "4c6d9e13-af54-4071-c283-5b1d7e9f3064",
-      "version": [0, 1, 1]
+      "version": [
+        0,
+        1,
+        2
+      ]
     }
   ],
   "metadata": {
-    "authors": ["souliliki-bot"],
+    "authors": [
+      "souliliki-bot"
+    ],
     "license": "MIT",
     "product_type": "addon"
   }
