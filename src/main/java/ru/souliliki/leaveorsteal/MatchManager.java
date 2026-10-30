@@ -160,10 +160,12 @@ public final class MatchManager {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
             if (player == null) continue;
             for (ItemStack stack : match.items.get(id)) {
-                if (!player.getInventory().insertStack(stack.copy())) {
-                    player.dropItem(stack.copy(), false);
+                ItemStack remainder = stack.copy();
+                if (!player.getInventory().insertStack(remainder) && !remainder.isEmpty()) {
+                    player.dropItem(remainder, false);
                 }
             }
+            match.items.get(id).clear();
         }
     }
 
