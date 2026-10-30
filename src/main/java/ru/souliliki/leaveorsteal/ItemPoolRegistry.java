@@ -80,6 +80,14 @@ public final class ItemPoolRegistry {
         return List.copyOf(pools.get(chestClass));
     }
 
+    public synchronized void setClassWeight(ChestClass chestClass, int weight) throws IOException {
+        config.setProperty("weight." + chestClass.name(), Integer.toString(Math.max(0, weight)));
+        try (Writer writer = Files.newBufferedWriter(configPath)) {
+            config.store(writer, "Leave or Steal item pools. Chest classes: " +
+                String.join(", ", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
+        }
+    }
+
     public synchronized int getClassWeight(ChestClass chestClass) {
         int fallback = defaultWeight(chestClass);
         try {
