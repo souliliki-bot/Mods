@@ -1179,6 +1179,11 @@ public final class MatchManager {
         String claim;
         ItemStack roundItem = ItemStack.EMPTY;
         boolean chaosMode, highStakes, doubleRewardEvent, trapEvent, revealEvent;
+        ServerWorld trapChestWorld;
+        BlockPos trapChestPos;
+        BlockState trapChestOriginalState;
+        int trapChestCleanupTicks;
+        boolean trapChestOpened;
         boolean shieldUsed, shieldArmed, insightUsed;
         final Map<UUID, ItemStack> stakes = new HashMap<>();
         final List<ItemStack> roundBonusItems = new ArrayList<>();
