@@ -5,6 +5,8 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.ArmorItem;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
@@ -48,10 +50,13 @@ public final class MatchManager {
     private boolean restoreHungerEnabled = true;
     private int roundsPerMatch = 9;
     private boolean nextFirstPlayerChooses = true;
+    private Path statsFile;
+    private final Map<UUID, PlayerStats> playerStats = new HashMap<>();
 
     public static MatchManager get() { return INSTANCE; }
 
     public synchronized void loadSettings(MinecraftServer server) {
+        loadPlayerStats(server);
         settingsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-settings.json");
         if (!Files.exists(settingsFile)) return;
         try (var reader = Files.newBufferedReader(settingsFile)) {
@@ -163,16 +168,22 @@ public final class MatchManager {
     }
 
     public synchronized void startBotMatch(ServerPlayerEntity player) {
+        startBotMatch(player, roundsPerMatch, false, false);
+    }
+
+    public synchronized void startBotMatch(ServerPlayerEntity player, int rounds, boolean chaos, boolean highStakes) {
         if (matches.containsKey(player.getUuid()) || queue.contains(player.getUuid())) {
             player.sendMessage(Text.literal("§cТы уже в очереди или матче."), false);
             return;
         }
         lobbies.remove(player.getUuid());
-        Match match = new Match(player.getUuid(), UUID.randomUUID(), roundsPerMatch);
+        Match match = new Match(player.getUuid(), UUID.randomUUID(), Math.max(1, Math.min(30, rounds)));
         match.botOpponent = true;
+        match.chaosMode = chaos;
+        match.highStakes = highStakes;
         matches.put(player.getUuid(), match);
         teleportMatchToArena(player.getServer(), match);
-        player.sendMessage(Text.literal("§6Ты начал матч против ИИ-бота. Бот будет принимать решения и вести свои раунды."), false);
+        player.sendMessage(Text.literal("§6Ты начал матч против ИИ-бота (" + match.totalRounds + " раундов)." + (chaos ? " §dБезумный режим активен." : "") + (highStakes ? " §cВысокие ставки активны." : "")), false);
         beginRound(player.getServer(), match);
     }
 
@@ -478,6 +489,17 @@ public final class MatchManager {
         match.roundClass = ItemPoolRegistry.get().getClassFor(id);
         match.claim = null;
         match.phase = Phase.CLAIM;
+        match.doubleRewardEvent = false;
+        match.trapEvent = false;
+        match.revealEvent = false;
+        int eventChance = match.chaosMode ? 75 : 28;
+        if (random.nextInt(100) < eventChance) {
+            int event = random.nextInt(3);
+            if (event == 0) { match.doubleRewardEvent = true; notifyBoth(server, match, "§6Событие раунда: ДВОЙНАЯ НАГРАДА! Победитель получит два экземпляра предмета."); }
+            else if (event == 1) { match.trapEvent = true; notifyBoth(server, match, "§cСобытие раунда: СУНДУК С ПОДВОХОМ! Победителя ждёт неприятный сюрприз."); }
+            else { match.revealEvent = true; notifyBoth(server, match, "§bСобытие раунда: ПРОЗРАЧНОСТЬ! Соперник сможет увидеть предмет."); }
+        }
+        if (match.highStakes && !match.doubleRewardEvent) { match.doubleRewardEvent = true; notifyBoth(server, match, "§cВысокие ставки: награда раунда удвоена."); }
 
         ServerPlayerEntity owner = server.getPlayerManager().getPlayer(match.owner);
         ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(match.other(match.owner));
@@ -498,7 +520,9 @@ public final class MatchManager {
                 match.roundItem.getName().getString() + "§a (§f" + (match.roundClass == null ? "без класса" : match.roundClass.displayName()) + "§a)." +
                 ammoNote + " Расскажи о нём сопернику командой §e/leaveorsteal claim <текст>§a."), false);
         }
-        if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Соперник выбирает предмет и готовит заявление. Сам предмет пока скрыт."), false);
+        if (chooser != null) {
+            chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Соперник выбирает предмет и готовит заявление." + (match.revealEvent ? " §bСобытие раскрывает предмет: " + match.roundItem.getName().getString() : " Сам предмет пока скрыт.")), false);
+        }
     }
 
     public synchronized String status(ServerPlayerEntity player) {
@@ -549,6 +573,35 @@ public final class MatchManager {
         player.sendMessage(Text.literal("§aЗаявление отправлено. Ждём решения соперника."), false);
     }
 
+    public synchronized void useAbility(ServerPlayerEntity player, String ability) {
+        Match match = matches.get(player.getUuid());
+        if (match == null || match.phase == Phase.DUEL || match.phase == Phase.FINISHED) { player.sendMessage(Text.literal("§cСейчас способности недоступны."), false); return; }
+        switch (ability.toLowerCase(Locale.ROOT)) {
+            case "shield" -> {
+                if (!match.owner.equals(player.getUuid()) || match.shieldUsed) { player.sendMessage(Text.literal("§cЩит доступен владельцу предмета один раз за матч."), false); return; }
+                match.shieldUsed = true; match.shieldArmed = true;
+                player.sendMessage(Text.literal("§aЩит активирован: кража текущего предмета будет отменена."), false);
+            }
+            case "insight" -> {
+                if (match.owner.equals(player.getUuid()) || match.insightUsed) { player.sendMessage(Text.literal("§cПрозрение доступно выбирающему один раз за матч."), false); return; }
+                match.insightUsed = true;
+                player.sendMessage(Text.literal("§bПрозрение: предмет раунда — §f" + match.roundItem.getName().getString()), false);
+            }
+            default -> player.sendMessage(Text.literal("§cСпособности: shield, insight."), false);
+        }
+    }
+
+    public synchronized void wager(ServerPlayerEntity player) {
+        Match match = matches.get(player.getUuid());
+        if (match == null || (match.phase != Phase.CLAIM && match.phase != Phase.DECISION)) { player.sendMessage(Text.literal("§cСтавку можно сделать во время раунда."), false); return; }
+        if (match.stakes.containsKey(player.getUuid())) { player.sendMessage(Text.literal("§eТы уже сделал ставку в этом раунде."), false); return; }
+        ItemStack held = player.getMainHandStack();
+        if (held.isEmpty()) { player.sendMessage(Text.literal("§cВозьми предмет в основную руку, чтобы поставить его."), false); return; }
+        match.stakes.put(player.getUuid(), held.copy());
+        player.getInventory().setStack(player.getInventory().selectedSlot, ItemStack.EMPTY);
+        player.sendMessage(Text.literal("§6Ставка принята: " + held.getName().getString() + ". Победитель раунда заберёт все ставки."), false);
+    }
+
     public synchronized void decide(ServerPlayerEntity player, boolean steal) {
         Match match = matches.get(player.getUuid());
         if (match == null || match.phase != Phase.DECISION || match.owner.equals(player.getUuid()) ||
@@ -561,8 +614,17 @@ public final class MatchManager {
 
     private void resolveDecision(MinecraftServer server, Match match, UUID chooser, boolean steal) {
         UUID previousOwner = match.owner;
+        if (steal && match.shieldArmed) { steal = false; match.shieldArmed = false; notifyBoth(server, match, "§bЩит сработал! Попытка кражи отменена."); }
         UUID winner = steal ? chooser : previousOwner;
         match.items.get(winner).add(match.roundItem.copy());
+        if (match.doubleRewardEvent) match.items.get(winner).add(match.roundItem.copy());
+        for (ItemStack stake : match.stakes.values()) match.items.get(winner).add(stake.copy());
+        match.stakes.clear();
+        if (match.trapEvent) {
+            ServerPlayerEntity winnerPlayer = server.getPlayerManager().getPlayer(winner);
+            if (winnerPlayer != null) winnerPlayer.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 100, 0));
+            notifyBoth(server, match, "§cЛовушка сработала: победитель раунда отравлен!");
+        }
         for (ItemStack ammo : match.roundBonusItems) match.items.get(winner).add(ammo.copy());
         match.roundBonusItems.clear();
 
@@ -670,6 +732,9 @@ public final class MatchManager {
         mob.refreshPositionAndAngles(x, y, z, player.getYaw() + 180.0F, 0.0F);
         mob.setPersistent();
         mob.setCanPickUpLoot(false);
+        mob.setHealth(Math.max(1.0F, mob.getMaxHealth() * 0.75F));
+        mob.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 20 * 60 * 10, 0));
+        mob.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 20 * 60 * 10, 0));
         mob.setCustomName(Text.literal("Соперник: " + mob.getName().getString()));
         mob.setCustomNameVisible(true);
         mob.setAiDisabled(true);
@@ -837,6 +902,58 @@ public final class MatchManager {
         }
     }
 
+    private void loadPlayerStats(MinecraftServer server) {
+        statsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-stats.json");
+        playerStats.clear();
+        if (!Files.exists(statsFile)) return;
+        try (var reader = Files.newBufferedReader(statsFile)) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            for (var entry : root.entrySet()) {
+                JsonObject value = entry.getValue().getAsJsonObject();
+                PlayerStats stats = new PlayerStats();
+                stats.wins = value.has("wins") ? value.get("wins").getAsInt() : 0;
+                stats.losses = value.has("losses") ? value.get("losses").getAsInt() : 0;
+                playerStats.put(UUID.fromString(entry.getKey()), stats);
+            }
+        } catch (Exception exception) { LeaveOrStealMod.LOGGER.error("Не удалось загрузить статистику", exception); }
+    }
+
+    private void savePlayerStats() {
+        if (statsFile == null) return;
+        JsonObject root = new JsonObject();
+        playerStats.forEach((id, stats) -> {
+            JsonObject value = new JsonObject();
+            value.addProperty("wins", stats.wins); value.addProperty("losses", stats.losses);
+            root.add(id.toString(), value);
+        });
+        try {
+            Files.createDirectories(statsFile.getParent());
+            try (var writer = Files.newBufferedWriter(statsFile)) { GSON.toJson(root, writer); }
+        } catch (IOException exception) { LeaveOrStealMod.LOGGER.error("Не удалось сохранить статистику", exception); }
+    }
+
+    private void recordMatchResult(MinecraftServer server, Match match, UUID winner) {
+        for (UUID id : List.of(match.first, match.second)) {
+            if (match.botOpponent && id.equals(match.second)) continue;
+            PlayerStats stats = playerStats.computeIfAbsent(id, ignored -> new PlayerStats());
+            if (id.equals(winner)) {
+                stats.wins++;
+                ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
+                if (player != null) {
+                    String title = stats.wins >= 25 ? "§6Легенда обмана" : stats.wins >= 10 ? "§bМастер доверия" : stats.wins >= 5 ? "§aОпытный игрок" : "§7Новичок арены";
+                    player.sendMessage(Text.literal("§6Достижение: победа в матче! §7Побед: " + stats.wins + " · Титул: " + title), false);
+                }
+            } else stats.losses++;
+        }
+        savePlayerStats();
+    }
+
+    public synchronized void showStats(ServerPlayerEntity player) {
+        PlayerStats stats = playerStats.getOrDefault(player.getUuid(), new PlayerStats());
+        String title = stats.wins >= 25 ? "Легенда обмана" : stats.wins >= 10 ? "Мастер доверия" : stats.wins >= 5 ? "Опытный игрок" : "Новичок арены";
+        player.sendMessage(Text.literal("§6Статистика: победы " + stats.wins + ", поражения " + stats.losses + ", титул: " + title), false);
+    }
+
     private void deliverPendingRewards(ServerPlayerEntity player) {
         List<ItemStack> pending = pendingRewards.remove(player.getUuid());
         if (pending == null || pending.isEmpty()) return;
@@ -865,6 +982,7 @@ public final class MatchManager {
     private void finishDuel(MinecraftServer server, Match match, UUID winner, String winnerMessage) {
         if (match.phase != Phase.DUEL) return;
         match.phase = Phase.FINISHED;
+        recordMatchResult(server, match, winner);
         if (match.duelMob != null && match.duelMob.isAlive()) match.duelMob.discard();
         matches.remove(match.first);
         matches.remove(match.second);
@@ -924,6 +1042,8 @@ public final class MatchManager {
         Lobby(UUID host) { this.host = host; }
     }
 
+    private static final class PlayerStats { int wins, losses; }
+
     private static final class Match {
         final UUID first, second;
         boolean botOpponent;
@@ -934,6 +1054,9 @@ public final class MatchManager {
         Phase phase = Phase.CLAIM;
         String claim;
         ItemStack roundItem = ItemStack.EMPTY;
+        boolean chaosMode, highStakes, doubleRewardEvent, trapEvent, revealEvent;
+        boolean shieldUsed, shieldArmed, insightUsed;
+        final Map<UUID, ItemStack> stakes = new HashMap<>();
         final List<ItemStack> roundBonusItems = new ArrayList<>();
         Identifier roundItemId;
         ChestClass roundClass;
