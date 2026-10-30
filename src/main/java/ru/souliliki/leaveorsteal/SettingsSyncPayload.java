@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public record SettingsSyncPayload(boolean arenaTeleport, boolean restoreHealth, boolean restoreHunger,
-                                  List<Integer> classWeights) implements CustomPayload {
+                                  List<Integer> classWeights, List<Boolean> enabledClasses) implements CustomPayload {
     public static final Id<SettingsSyncPayload> ID =
         new Id<>(Identifier.of(LeaveOrStealMod.MOD_ID, "settings_sync"));
 
@@ -20,11 +20,13 @@ public record SettingsSyncPayload(boolean arenaTeleport, boolean restoreHealth, 
             PacketCodecs.BOOL, SettingsSyncPayload::restoreHealth,
             PacketCodecs.BOOL, SettingsSyncPayload::restoreHunger,
             PacketCodecs.collection(ArrayList::new, PacketCodecs.VAR_INT), SettingsSyncPayload::classWeights,
+            PacketCodecs.collection(ArrayList::new, PacketCodecs.BOOL), SettingsSyncPayload::enabledClasses,
             SettingsSyncPayload::new
         );
 
     public SettingsSyncPayload {
         classWeights = List.copyOf(classWeights);
+        enabledClasses = List.copyOf(enabledClasses);
     }
 
     @Override
