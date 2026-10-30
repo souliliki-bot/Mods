@@ -88,9 +88,11 @@ function removeOneFromHand(p) {
 function returnEscrow() {
   if (!match) return;
   for (const [id, items] of Object.entries(match.escrow ?? {})) {
-    const p = match.players.find(x => x?.id === id);
-    if (p) for (const item of items) give(p, item.typeId, item.amount);
-    delete state.pendingEscrow[id];
+    const online = players().find(x => x.id === id);
+    if (online) {
+      for (const item of items) give(online, item.typeId, item.amount);
+      delete state.pendingEscrow[id];
+    }
   }
   saveState();
   match.escrow = {};
@@ -297,7 +299,8 @@ function resolveChoice(choice, chooser) {
     if (winner) for (const item of wagers) give(winner, item.typeId, item.amount);
     else for (const p of match.players) if (p) for (const item of (match.escrow[p.id] ?? [])) give(p,item.typeId,item.amount);
   }
-  state.pendingEscrow = {}; saveState();
+  for (const p of match.players) if (p) delete state.pendingEscrow[p.id];
+  saveState();
   match.escrow = {};
   match.phase = "between";
   match.round++;
@@ -575,6 +578,7 @@ function command(p, raw) {
     if (!ns) return tell(p,"Формат: !los namespace enable|disable <namespace>");
     if (action==="enable") {
       state.settings.enabledNamespaces=state.settings.enabledNamespaces.filter(x=>x!=="*");
+      state.settings.excludedNamespaces=state.settings.excludedNamespaces.filter(x=>x!==ns);
       if (!state.settings.enabledNamespaces.includes(ns)) state.settings.enabledNamespaces.push(ns);
     } else if (action==="disable") {
       if (!state.settings.excludedNamespaces.includes(ns)) state.settings.excludedNamespaces.push(ns);
@@ -643,8 +647,27 @@ world.afterEvents.playerInteractWithEntity.subscribe(ev => {
 world.afterEvents.playerLeave.subscribe(ev => {
   if (!match) return;
   const p=match.players.find(x=>x?.id===ev.playerId);
-  if (p) { announce(p.name+" отключился. Матч завершён."); returnEscrow(); cleanChest(); match=undefined; }
+  if (p) {
+    if (match.phase === "duel" && match.teamMode) {
+      const losing=match.teams.find(team=>team.some(x=>x.id===ev.playerId));
+      const winning=match.teams.find(team=>team!==losing);
+      for (const x of winning) stat(x,"wins");
+      for (const x of losing) stat(x,"losses");
+      announce("Команда "+winning.map(x=>x.name).join(" и ")+" победила: "+p.name+" отключился.");
+      returnEscrow(); cleanChest(); match=undefined;
+    } else if (match.phase === "duel") {
+      const winner=match.players.find(x=>x && x.id!==ev.playerId);
+      finishMatch(winner,p,p.name+" отключился во время финальной дуэли.");
+    } else if (match.phase === "mob_fight") {
+      finishMatch(undefined,p,p.name+" отключился во время финального боя.");
+    } else {
+      announce(p.name+" отключился. Матч прерван.");
+      returnEscrow(); cleanChest(); match=undefined;
+    }
+  }
   queue=queue.filter(id=>id!==ev.playerId);
+  lobbies.delete(ev.playerId);
+  for (const [target,host] of invites.entries()) if (target===ev.playerId || host===ev.playerId) invites.delete(target);
 });
 world.afterEvents.entityHurt.subscribe(ev => {
   if (!match || match.phase !== "mob_fight" || ev.hurtEntity.id !== match.finalMobId) return;
@@ -660,7 +683,7 @@ world.afterEvents.entityHurt.subscribe(ev => {
       mob.dimension.spawnEntity("minecraft:skeleton",{x:mob.location.x-2,y:mob.location.y,z:mob.location.z});
       announce("§cФаза босса II: он усилился и призвал стражей!");
     }
-    if (ratio <= 0.33 && (match.bossPhase ?? 1) < 3) {
+    else if (ratio <= 0.33 && (match.bossPhase ?? 1) < 3) {
       match.bossPhase=3;
       mob.addEffect("strength",20*60*5,{amplifier:3,showParticles:true});
       mob.addEffect("resistance",20*60*5,{amplifier:2,showParticles:true});
