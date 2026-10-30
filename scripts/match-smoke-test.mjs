@@ -3,7 +3,6 @@ import mineflayer from 'mineflayer';
 const HOST = process.env.MC_HOST ?? '127.0.0.1';
 const PORT = Number(process.env.MC_PORT ?? 25565);
 const VERSION = '1.21.1';
-
 const bots = [];
 const histories = new Map();
 
@@ -66,14 +65,20 @@ async function main() {
     await waitFor(first, message => message.includes('добавлен в очередь'), 'first player queue confirmation');
     second.chat('/leaveorsteal join');
 
-    await Promise.all([
-      waitFor(first, message => message.includes('Твой тайный предмет'), 'round owner secret item'),
-      waitFor(second, message => message.includes('Сам предмет пока скрыт'), 'opponent round prompt')
-    ]);
+    const decisions = ['keep', 'keep', 'steal', 'keep', 'steal', 'keep', 'keep', 'keep', 'keep'];
+    for (let round = 1; round <= 9; round++) {
+      const owner = round % 2 === 1 ? first : second;
+      const chooser = round % 2 === 1 ? second : first;
 
-    first.chat('/leaveorsteal claim CI проверка игрового раунда');
-    await waitFor(second, message => message.includes('CI проверка игрового раунда'), 'claim delivered to opponent');
-    second.chat('/leaveorsteal keep');
+      await Promise.all([
+        waitFor(owner, message => message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет'), `round ${round} owner prompt`),
+        waitFor(chooser, message => message.includes(`Раунд ${round}/9`) && message.includes('Сам предмет пока скрыт'), `round ${round} chooser prompt`)
+      ]);
+
+      owner.chat(`/leaveorsteal claim CI заявление раунд ${round}`);
+      await waitFor(chooser, message => message.includes(`CI заявление раунд ${round}`), `round ${round} claim delivery`);
+      chooser.chat(`/leaveorsteal ${decisions[round - 1]}`);
+    }
 
     await Promise.all([
       waitFor(first, message => message.includes('Начинается финальная PvP-дуэль'), 'duel phase for first player'),
@@ -81,11 +86,11 @@ async function main() {
     ]);
 
     const inventoryDeadline = Date.now() + 10000;
-    while (first.inventory.items().length === 0 && Date.now() < inventoryDeadline) {
+    while ((first.inventory.items().length === 0 || second.inventory.items().length === 0) && Date.now() < inventoryDeadline) {
       await new Promise(resolve => setTimeout(resolve, 200));
     }
-    if (first.inventory.items().length === 0) {
-      throw new Error('Round reward was not delivered to the first player inventory.');
+    if (first.inventory.items().length === 0 || second.inventory.items().length === 0) {
+      throw new Error(`Round rewards were not delivered to both players. Inventories: A=${first.inventory.items().length}, B=${second.inventory.items().length}`);
     }
 
     first.chat('/leaveorsteal leave');
@@ -94,7 +99,7 @@ async function main() {
       waitFor(second, message => message.includes('Соперник сдался'), 'duel win message')
     ]);
 
-    console.log('MATCH_SMOKE_TEST_SUCCESS: queue, claim, keep, reward delivery, duel transition and surrender passed.');
+    console.log('MATCH_SMOKE_TEST_SUCCESS: two players completed all 9 rounds, keep/steal decisions, reward delivery, duel transition and surrender.');
   } finally {
     for (const bot of bots) {
       try { bot.quit('CI test complete'); } catch {}
