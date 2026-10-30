@@ -57,7 +57,7 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
+                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, rounds <1..30>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, weight <класс> <0..100000>, inspect <namespace:item>, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
@@ -82,6 +82,14 @@ public class LeaveOrStealMod implements ModInitializer {
                         MatchManager.get().toggleSetting(context.getSource().getPlayer(), "hunger");
                         return 1;
                     })))
+                .then(CommandManager.literal("rounds").requires(source -> source.hasPermissionLevel(2))
+                    .then(CommandManager.argument("count", IntegerArgumentType.integer(1, 30))
+                        .executes(context -> {
+                            if (context.getSource().getPlayer() == null) return 0;
+                            MatchManager.get().setRoundsPerMatch(context.getSource().getPlayer(),
+                                IntegerArgumentType.getInteger(context, "count"));
+                            return 1;
+                        })))
                 .then(CommandManager.literal("weight").requires(source -> source.hasPermissionLevel(2))
                     .then(CommandManager.argument("name", StringArgumentType.word())
                         .suggests((context, builder) -> {
