@@ -51,6 +51,31 @@ function waitForSpawn(bot, username) {
   });
 }
 
+async function playNineRounds(first, second, decisions, label) {
+  first.chat('/leaveorsteal join');
+  await waitFor(first, message => message.includes('добавлен в очередь'), `${label}: first player queue confirmation`);
+  second.chat('/leaveorsteal join');
+
+  for (let round = 1; round <= 9; round++) {
+    const owner = round % 2 === 1 ? first : second;
+    const chooser = round % 2 === 1 ? second : first;
+
+    await Promise.all([
+      waitFor(owner, message => message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет'), `${label}: round ${round} owner prompt`),
+      waitFor(chooser, message => message.includes(`Раунд ${round}/9`) && message.includes('Сам предмет пока скрыт'), `${label}: round ${round} chooser prompt`)
+    ]);
+
+    owner.chat(`/leaveorsteal claim ${label} заявление раунд ${round}`);
+    await waitFor(chooser, message => message.includes(`${label} заявление раунд ${round}`), `${label}: round ${round} claim delivery`);
+    chooser.chat(`/leaveorsteal ${decisions[round - 1]}`);
+  }
+
+  await Promise.all([
+    waitFor(first, message => message.includes('Начинается финальная PvP-дуэль'), `${label}: duel phase for first player`),
+    waitFor(second, message => message.includes('Начинается финальная PvP-дуэль'), `${label}: duel phase for second player`)
+  ]);
+}
+
 async function main() {
   const first = createTestBot('LeaveStealTestA');
   const second = createTestBot('LeaveStealTestB');
@@ -61,29 +86,8 @@ async function main() {
       waitForSpawn(second, 'LeaveStealTestB')
     ]);
 
-    first.chat('/leaveorsteal join');
-    await waitFor(first, message => message.includes('добавлен в очередь'), 'first player queue confirmation');
-    second.chat('/leaveorsteal join');
-
-    const decisions = ['keep', 'keep', 'steal', 'keep', 'steal', 'keep', 'keep', 'keep', 'keep'];
-    for (let round = 1; round <= 9; round++) {
-      const owner = round % 2 === 1 ? first : second;
-      const chooser = round % 2 === 1 ? second : first;
-
-      await Promise.all([
-        waitFor(owner, message => message.includes(`Раунд ${round}/9`) && message.includes('Твой тайный предмет'), `round ${round} owner prompt`),
-        waitFor(chooser, message => message.includes(`Раунд ${round}/9`) && message.includes('Сам предмет пока скрыт'), `round ${round} chooser prompt`)
-      ]);
-
-      owner.chat(`/leaveorsteal claim CI заявление раунд ${round}`);
-      await waitFor(chooser, message => message.includes(`CI заявление раунд ${round}`), `round ${round} claim delivery`);
-      chooser.chat(`/leaveorsteal ${decisions[round - 1]}`);
-    }
-
-    await Promise.all([
-      waitFor(first, message => message.includes('Начинается финальная PvP-дуэль'), 'duel phase for first player'),
-      waitFor(second, message => message.includes('Начинается финальная PvP-дуэль'), 'duel phase for second player')
-    ]);
+    const mixedDecisions = ['keep', 'keep', 'steal', 'keep', 'steal', 'keep', 'keep', 'keep', 'keep'];
+    await playNineRounds(first, second, mixedDecisions, 'CI surrender match');
 
     const inventoryDeadline = Date.now() + 10000;
     while ((first.inventory.items().length === 0 || second.inventory.items().length === 0) && Date.now() < inventoryDeadline) {
@@ -99,7 +103,11 @@ async function main() {
       waitFor(second, message => message.includes('Соперник сдался'), 'duel win message')
     ]);
 
-    console.log('MATCH_SMOKE_TEST_SUCCESS: two players completed all 9 rounds, keep/steal decisions, reward delivery, duel transition and surrender.');
+    await playNineRounds(first, second, Array(9).fill('keep'), 'CI disconnect match');
+    first.quit('Simulate disconnect during duel');
+    await waitFor(second, message => message.includes('Соперник отключился во время финальной дуэли'), 'disconnect awards duel victory');
+
+    console.log('MATCH_SMOKE_TEST_SUCCESS: two 9-round matches, keep/steal, rewards for both players, duel transition, surrender and duel disconnect passed.');
   } finally {
     for (const bot of bots) {
       try { bot.quit('CI test complete'); } catch {}
