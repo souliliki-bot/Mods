@@ -24,12 +24,12 @@ let chestData;
 let chestCooldown = 0;
 
 function loadState() {
-  const fallback = { stats: {}, settings: { rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {} };
+  const fallback = { stats: {}, settings: { rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
   try {
     const raw = world.getDynamicProperty(STORAGE);
     if (!raw || typeof raw !== "string") return fallback;
     const parsed = JSON.parse(raw);
-    return { ...fallback, ...parsed, settings: { ...fallback.settings, ...(parsed.settings ?? {}) }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) } };
+    return { ...fallback, ...parsed, settings: { ...fallback.settings, ...(parsed.settings ?? {}) }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) }, pendingEscrow: parsed.pendingEscrow ?? {} };
   } catch { return fallback; }
 }
 function saveState() { try { world.setDynamicProperty(STORAGE, JSON.stringify(state)); } catch {} }
@@ -60,6 +60,11 @@ function give(p, typeId, amount = 1) {
     const item = new ItemStack(typeId, Math.max(1, amount));
     const left = inv?.addItem(item);
     if (!inv || left) p.dimension.spawnItem(left ?? item, p.location);
+    if (typeId === "minecraft:bow" || typeId === "minecraft:crossbow") {
+      const arrows = new ItemStack("minecraft:arrow", 16);
+      const remainder = inv?.addItem(arrows);
+      if (!inv || remainder) p.dimension.spawnItem(remainder ?? arrows, p.location);
+    }
   } catch { tell(p, "Предмет не поддерживается этой версией: " + typeId); }
 }
 function removeOneFromHand(p) {
@@ -78,7 +83,9 @@ function returnEscrow() {
   for (const [id, items] of Object.entries(match.escrow ?? {})) {
     const p = match.players.find(x => x?.id === id);
     if (p) for (const item of items) give(p, item.typeId, item.amount);
+    delete state.pendingEscrow[id];
   }
+  saveState();
   match.escrow = {};
 }
 function weightedClass() {
@@ -179,7 +186,9 @@ function roundEvent() {
   } else if (event === 1) spawnTrapChest();
   else {
     match.reveal = true;
-    announce("§bСобытие: предмет раскрыт всем — " + match.reward.typeId + "!");
+    const chooser = match.players[match.chooserIndex];
+    if (chooser) tell(chooser, "§bСобытие: предмет раскрыт — " + match.reward.typeId + "!");
+    announce("§bСобытие: Проницательность раскрыла предмет выбирающему.");
   }
 }
 function beginRound() {
@@ -230,7 +239,11 @@ function resolveChoice(choice, chooser) {
   const stolen = choice === "steal" && !match.shieldUsed;
   const winner = match.bot ? owner : (stolen ? chooser : owner);
   const amount = (match.highStakes ? 2 : 1) * (match.doubleReward ? 2 : 1);
-  if (!match.bot || !stolen) give(winner, match.reward.typeId, amount);
+  if (!match.bot || !stolen) {
+    give(winner, match.reward.typeId, amount);
+    match.earnedItems ??= [];
+    match.earnedItems.push(match.reward.typeId);
+  }
   if (stolen && !match.bot) stat(chooser, "steals"); else if (!stolen || match.shieldUsed) stat(owner, "kept");
   for (const p of match.players) if (p) stat(p, "rounds");
   announce(match.bot
@@ -239,6 +252,7 @@ function resolveChoice(choice, chooser) {
   announce("Получено: " + match.reward.typeId + " ×" + amount + ".");
   const wagers = Object.values(match.escrow ?? {}).flat();
   if (wagers.length) for (const item of wagers) give(winner, item.typeId, item.amount);
+  state.pendingEscrow = {}; saveState();
   match.escrow = {};
   match.phase = "between";
   match.round++;
@@ -247,10 +261,14 @@ function resolveChoice(choice, chooser) {
 function useAbility(p, name) {
   if (!match || (match.phase !== "claim" && match.phase !== "decision")) return tell(p, "Способность можно использовать только во время раунда.");
   if (name === "shield" && match.players[match.ownerIndex]?.id === p.id) {
-    if (match.shieldUsed) return tell(p, "Щит уже использован в этом матче.");
+    match.abilitiesUsed ??= {};
+    if (match.abilitiesUsed[p.id + ":shield"]) return tell(p, "Щит уже использован в этом матче.");
+    match.abilitiesUsed[p.id + ":shield"] = true;
     match.shieldUsed = true; tell(p, "§aЩит активирован: кража этого предмета будет отменена.");
   } else if (name === "insight" && match.players[match.chooserIndex]?.id === p.id) {
-    if (match.insightUsed) return tell(p, "Проницательность уже использована в этом матче.");
+    match.abilitiesUsed ??= {};
+    if (match.abilitiesUsed[p.id + ":insight"]) return tell(p, "Проницательность уже использована в этом матче.");
+    match.abilitiesUsed[p.id + ":insight"] = true;
     match.insightUsed = true; tell(p, "§bПроницательность: тайный предмет — " + match.reward.typeId + ".");
   } else tell(p, "Эта способность сейчас недоступна твоей роли.");
 }
@@ -261,6 +279,7 @@ function wager(p) {
   if (!item) return tell(p, "Возьми предмет в основную руку, чтобы поставить его.");
   if (!match.escrow) match.escrow = {};
   match.escrow[p.id] = [item];
+  state.pendingEscrow[p.id] = [item]; saveState();
   announce(p.name + " сделал ставку: " + item.typeId + ".");
 }
 function finishMatch(winner, loser, reason = "") {
@@ -292,11 +311,13 @@ function beginFinalPhase() {
       mob.addEffect("resistance", 20 * 60 * 10, { amplifier: 1, showParticles: true });
       try {
         const gear = mob.getComponent("minecraft:equippable");
-        gear?.setEquipment("Mainhand", new ItemStack("minecraft:netherite_sword"));
-        gear?.setEquipment("Head", new ItemStack("minecraft:diamond_helmet"));
-        gear?.setEquipment("Chest", new ItemStack("minecraft:diamond_chestplate"));
-        gear?.setEquipment("Legs", new ItemStack("minecraft:diamond_leggings"));
-        gear?.setEquipment("Feet", new ItemStack("minecraft:diamond_boots"));
+        const earned = match.earnedItems ?? [];
+        const choose = (suffix, fallback) => earned.filter(id => id.endsWith(suffix)).sort((a,b) => (b.includes("netherite")?3:b.includes("diamond")?2:b.includes("iron")?1:0)-(a.includes("netherite")?3:a.includes("diamond")?2:a.includes("iron")?1:0))[0] ?? fallback;
+        gear?.setEquipment("Mainhand", new ItemStack(choose("_sword", "minecraft:netherite_sword")));
+        gear?.setEquipment("Head", new ItemStack(choose("_helmet", "minecraft:diamond_helmet")));
+        gear?.setEquipment("Chest", new ItemStack(choose("_chestplate", "minecraft:diamond_chestplate")));
+        gear?.setEquipment("Legs", new ItemStack(choose("_leggings", "minecraft:diamond_leggings")));
+        gear?.setEquipment("Feet", new ItemStack(choose("_boots", "minecraft:diamond_boots")));
       } catch {}
       mob.addEffect("slowness", 20 * 60 * 10, { amplifier: 10, showParticles: false });
     } catch { tell(p, "Не удалось создать финального моба. Матч завершён без дуэли."); finishMatch(p, undefined); return; }
@@ -327,7 +348,7 @@ function queueJoin(p) {
 }
 function startPvp(list, rounds, opts = {}) {
   if (match) return tell(list[0], "Сейчас уже идёт матч.");
-  match = { players: list, rounds, round: 1, phase: "starting", bot: false, chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
+  match = { players: list, rounds, round: 1, phase: "starting", bot: false, abilitiesUsed: {}, earnedItems: [], chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
   list.forEach((p,i) => { safeTeleport(p, i === 0 ? state.arena.first : state.arena.second); restorePlayer(p); });
   announce("Матч начался! " + rounds + " раундов.");
   beginRound();
@@ -337,14 +358,14 @@ function startTeamMatch(starter) {
   if (match) return tell(starter, "Сейчас уже идёт матч.");
   if (all.length < 4) return tell(starter, "Для режима 2 на 2 нужны четыре игрока в одном мире.");
   const list = [starter, ...all.filter(x => x.id !== starter.id).slice(0, 3)];
-  match = { players: list, rounds: state.settings.rounds, round: 1, phase: "starting", bot: false, teamMode: true, escrow: {}, teams: [[list[0],list[1]],[list[2],list[3]]] };
+  match = { players: list, rounds: state.settings.rounds, round: 1, phase: "starting", bot: false, teamMode: true, escrow: {}, abilitiesUsed: {}, earnedItems: [], teams: [[list[0],list[1]],[list[2],list[3]]] };
   list.forEach((p,i) => { safeTeleport(p, i < 2 ? state.arena.first : state.arena.second); restorePlayer(p); });
   announce("Командный матч 2 на 2 начался! Команда A: " + list[0].name + ", " + list[1].name + ". Команда B: " + list[2].name + ", " + list[3].name + ".");
   beginRound();
 }
 function startBot(p, rounds = DEFAULT_ROUNDS, opts = {}) {
   if (match || inMatch(p)) return tell(p, "Ты уже в матче.");
-  match = { players: [p, undefined], rounds, round: 1, phase: "starting", bot: true, chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
+  match = { players: [p, undefined], rounds, round: 1, phase: "starting", bot: true, abilitiesUsed: {}, earnedItems: [], chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
   safeTeleport(p, state.arena.first); restorePlayer(p);
   tell(p, "Матч против ИИ начался! " + rounds + " раундов.");
   beginRound();
@@ -523,8 +544,19 @@ world.afterEvents.entityDie.subscribe(ev => {
       if (loser) finishMatch(winner,loser,"Победа в финальной дуэли.");
     }
   } else if (match.phase==="mob_fight" && dead.id===match.finalMobId) finishMatch(match.players[0],undefined,"Финальный моб повержен!");
+  else if (match.phase==="mob_fight" && dead.typeId==="minecraft:player" && dead.id===match.players[0]?.id) finishMatch(undefined,match.players[0],"Игрок проиграл финальному мобу.");
 });
 world.afterEvents.playerSpawn.subscribe(ev => {
-  if (ev.initialSpawn) system.runTimeout(()=>tell(ev.player,"Аддон загружен! Открой меню командой !los menu или напиши !los help."),30);
+  if (ev.initialSpawn) {
+    const pending = state.pendingEscrow[ev.player.id];
+    if (pending?.length) {
+      system.runTimeout(() => {
+        for (const item of pending) give(ev.player,item.typeId,item.amount);
+        delete state.pendingEscrow[ev.player.id]; saveState();
+        tell(ev.player,"Возвращена ставка незавершённого матча после перезапуска.");
+      }, 40);
+    }
+    system.runTimeout(()=>tell(ev.player,"Аддон загружен! Открой меню командой !los menu или напиши !los help."),30);
+  }
 });
 system.runTimeout(()=>{ for (const p of players()) tell(p,"«Обман и доверие» загружен. !los menu — открыть меню."); },40);
