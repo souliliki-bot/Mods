@@ -30,9 +30,16 @@ public final class ItemPoolRegistry {
             config.clear();
             config.load(reader);
         }
-        boolean addedDefaultFilter = config.putIfAbsent("excludedPathKeywords",
+        boolean addedDefaults = false;
+        addedDefaults |= config.putIfAbsent("excludedPathKeywords",
             "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book") == null;
-        if (addedDefaultFilter) {
+        addedDefaults |= config.putIfAbsent("enabledClasses",
+            String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList())) == null;
+        addedDefaults |= config.putIfAbsent("# namespace.<modid>=<CHEST_CLASS>",
+            "Example: namespace.magicmod=RARE") == null;
+        addedDefaults |= config.putIfAbsent("# path.<CHEST_CLASS>",
+            "Example: path.LEGENDARY=ruby,ancient,artifact") == null;
+        if (addedDefaults) {
             try (Writer writer = Files.newBufferedWriter(configPath)) {
                 config.store(writer, "Leave or Steal item pools. Chest classes: " +
                     String.join(", ", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
@@ -77,6 +84,13 @@ public final class ItemPoolRegistry {
 
         ChestClass integrationClass = ItemClassificationRegistry.get().classify(id);
         if (integrationClass != null) return integrationClass;
+
+        String namespaceClass = config.getProperty("namespace." + id.getNamespace(), "").trim();
+        ChestClass configuredNamespaceClass = parseClass(namespaceClass);
+        if (configuredNamespaceClass != null) return configuredNamespaceClass;
+
+        ChestClass configuredPathClass = classifyByConfiguredPath(id);
+        if (configuredPathClass != null) return configuredPathClass;
         return classifyByDefault(id);
     }
 
@@ -105,6 +119,27 @@ public final class ItemPoolRegistry {
         return false;
     }
 
+    private ChestClass classifyByConfiguredPath(Identifier id) {
+        String path = id.getPath().toLowerCase(Locale.ROOT);
+        for (ChestClass chestClass : ChestClass.values()) {
+            for (String fragment : csv(config.getProperty("path." + chestClass.name(), ""))) {
+                if (!fragment.isBlank() && path.contains(fragment.toLowerCase(Locale.ROOT))) {
+                    return chestClass;
+                }
+            }
+        }
+        return null;
+    }
+
+    private ChestClass parseClass(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return ChestClass.valueOf(value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     private ChestClass classifyByDefault(Identifier id) {
         return ItemClassifier.classify(id.getPath());
     }
@@ -121,6 +156,8 @@ public final class ItemPoolRegistry {
         config.setProperty("excludedNamespaces", "");
         config.setProperty("excludedItems", "");
         config.setProperty("enabledClasses", String.join(",", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
+        config.setProperty("# namespace.<modid>=<CHEST_CLASS>", "Example: namespace.magicmod=RARE");
+        config.setProperty("# path.<CHEST_CLASS>", "Example: path.LEGENDARY=ruby,ancient,artifact");
         config.setProperty("excludedPathKeywords",
             "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book");
         config.setProperty("# item.<namespace:item>=<CHEST_CLASS>", "Example: item.minecraft:diamond_sword=DIAMOND_GEAR");
