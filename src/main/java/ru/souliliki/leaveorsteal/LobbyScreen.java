@@ -10,10 +10,12 @@ import java.util.List;
 
 public final class LobbyScreen extends Screen {
     private final List<String> onlinePlayers;
+    private final boolean canManageSettings;
 
-    public LobbyScreen(List<String> onlinePlayers) {
+    public LobbyScreen(List<String> onlinePlayers, boolean canManageSettings) {
         super(Text.literal("Обман и доверие — лобби"));
         this.onlinePlayers = List.copyOf(onlinePlayers);
+        this.canManageSettings = canManageSettings;
     }
 
     @Override
@@ -41,11 +43,13 @@ public final class LobbyScreen extends Screen {
             y += 23;
         }
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Настройки сервера"), button ->
-            sendCommand("leaveorsteal settings"))
-            .dimensions(center - 150, Math.min(height - 48, y + 4), 145, 20).build());
+        if (canManageSettings) {
+            addDrawableChild(ButtonWidget.builder(Text.literal("Настройки сервера"), button ->
+                sendCommand("leaveorsteal settings"))
+                .dimensions(center - 150, Math.min(height - 48, y + 4), 145, 20).build());
+        }
         addDrawableChild(ButtonWidget.builder(Text.literal("Закрыть"), button -> close())
-            .dimensions(center + 5, Math.min(height - 48, y + 4), 145, 20).build());
+            .dimensions(canManageSettings ? center + 5 : center - 75, Math.min(height - 48, y + 4), 145, 20).build());
     }
 
     private void sendCommand(String command) {
