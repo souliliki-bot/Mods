@@ -30,6 +30,7 @@ public final class MatchManager {
     public static MatchManager get() { return INSTANCE; }
 
     public synchronized void loadRewards(MinecraftServer server) {
+        pendingRewards.clear();
         rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
         if (!Files.exists(rewardsFile)) return;
         try (var reader = Files.newBufferedReader(rewardsFile)) {
