@@ -56,7 +56,7 @@ public class LeaveOrStealMod implements ModInitializer {
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, items <namespace>, reloadconfig."
+                        "Команды: settings (меню настроек, оператор), setting <arena|health|hunger>, join, claim <текст>, keep, steal, loot, status, leave, setarena1, setarena2, classes, pool, inspect <namespace:item>, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
@@ -145,6 +145,18 @@ public class LeaveOrStealMod implements ModInitializer {
                     context.getSource().sendFeedback(() -> Text.literal("Классы сундуков:\n" + classes), false);
                     return 1;
                 }))
+                .then(CommandManager.literal("inspect").requires(source -> source.hasPermissionLevel(2))
+                    .then(CommandManager.argument("item", StringArgumentType.word()).executes(context -> {
+                        String rawId = StringArgumentType.getString(context, "item");
+                        Identifier id = Identifier.tryParse(rawId);
+                        if (id == null) {
+                            context.getSource().sendError(Text.literal("Неверный ID предмета. Пример: magicmod:ruby_sword"));
+                            return 0;
+                        }
+                        String details = ItemPoolRegistry.get().describeClassification(id);
+                        context.getSource().sendFeedback(() -> Text.literal(id + "\\n" + details), false);
+                        return 1;
+                    })))
                 .then(CommandManager.literal("pool").executes(context -> {
                     String summary = Arrays.stream(ChestClass.values())
                         .map(c -> c.name() + ": " + ItemPoolRegistry.get().count(c))
