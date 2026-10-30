@@ -600,7 +600,7 @@ public final class MatchManager {
         double x = player.getX() + 3.0;
         double y = player.getY();
         double z = player.getZ();
-        if (arenaSecond != null) {
+        if (arenaTeleportEnabled && arenaFirst != null && arenaSecond != null) {
             Identifier dimensionId = Identifier.tryParse(arenaSecond.dimension);
             if (dimensionId != null) {
                 ServerWorld arenaWorld = server.getWorld(RegistryKey.of(RegistryKeys.WORLD, dimensionId));
@@ -639,10 +639,18 @@ public final class MatchManager {
         List<ItemStack> earned = match.items.get(match.second);
         ItemStack bestWeapon = ItemStack.EMPTY;
         int bestWeaponScore = -1;
+        Map<EquipmentSlot, ItemStack> bestArmor = new EnumMap<>(EquipmentSlot.class);
+        Map<EquipmentSlot, Integer> armorScores = new EnumMap<>(EquipmentSlot.class);
         for (ItemStack stack : earned) {
             if (stack == null || stack.isEmpty()) continue;
             if (stack.getItem() instanceof ArmorItem armor) {
-                mob.equipStack(armor.getSlotType(), stack.copy());
+                EquipmentSlot slot = armor.getSlotType();
+                String armorPath = Registries.ITEM.getId(stack.getItem()).getPath().toLowerCase(Locale.ROOT);
+                int score = weaponScore(armorPath);
+                if (score > armorScores.getOrDefault(slot, -1)) {
+                    bestArmor.put(slot, stack.copy());
+                    armorScores.put(slot, score);
+                }
                 continue;
             }
             String path = Registries.ITEM.getId(stack.getItem()).getPath().toLowerCase(Locale.ROOT);
@@ -654,6 +662,7 @@ public final class MatchManager {
                 }
             }
         }
+        bestArmor.forEach(mob::equipStack);
         if (!bestWeapon.isEmpty()) mob.equipStack(EquipmentSlot.MAINHAND, bestWeapon.copy());
 
         if (!world.spawnEntity(mob)) {
