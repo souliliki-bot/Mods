@@ -38,6 +38,7 @@ public final class ItemPoolRegistry {
                     String.join(", ", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
             }
         }
+        ItemClassificationRegistry.get().reloadProviders();
         rebuildPools();
     }
 
@@ -55,7 +56,10 @@ public final class ItemPoolRegistry {
         }
         Item item = Registries.ITEM.get(id);
         if (item == null) return null;
-        return classifyByDefault(id, item);
+
+        ChestClass integrationClass = ItemClassificationRegistry.get().classify(id);
+        if (integrationClass != null) return integrationClass;
+        return classifyByDefault(id);
     }
 
     private void rebuildPools() {
@@ -81,7 +85,7 @@ public final class ItemPoolRegistry {
         return false;
     }
 
-    private ChestClass classifyByDefault(Identifier id, Item item) {
+    private ChestClass classifyByDefault(Identifier id) {
         return ItemClassifier.classify(id.getPath());
     }
 
