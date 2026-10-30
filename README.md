@@ -40,6 +40,41 @@
 
 Автоматическая классификация распознаёт распространённые названия еды, зелий, оружия, инструментов и брони. Незеритовый, алмазный и железный классы назначаются только предметам, похожим на снаряжение; неизвестные модовые предметы остаются в `COMMON`. Исключения namespace/ID и фильтр `excludedPathKeywords` применяются до классификации и имеют приоритет над ручным назначением класса.
 
+### API интеграций Fabric
+
+Другой мод может подключить собственные правила без зависимости от исходников Leave or Steal. Для этого он объявляет entrypoint в своём `fabric.mod.json`:
+
+```json
+{
+  "entrypoints": {
+    "leave_or_steal:item_classifiers": [
+      "example.mod.ExampleItemClassifier"
+    ]
+  }
+}
+```
+
+Класс должен реализовать публичный интерфейс `ItemClassificationProvider` из нашего мода:
+
+```java
+public final class ExampleItemClassifier implements ItemClassificationProvider {
+    @Override
+    public void register(ItemClassificationRegistry registry) {
+        registry.registerItem(
+            Identifier.of("example", "ruby_sword"),
+            ChestClass.RARE
+        );
+
+        registry.registerNamespace("example", id -> {
+            if (id.getPath().contains("ruby")) return ChestClass.RARE;
+            return null; // передать предмет встроенной классификации
+        });
+    }
+}
+```
+
+Правила конкретного предмета имеют приоритет над правилом namespace; правила namespace применяются до встроенной классификации. Ручное назначение через конфиг Leave or Steal имеет приоритет над интеграциями. Исключения namespace, ID и фрагментов пути применяются раньше всех правил. Интеграции повторно регистрируются командой `/leaveorsteal reloadconfig`.
+
 В раундах сервер выбирает предмет из доступных пулов. Его название и категория видны только текущему владельцу; соперник получает только заявление владельца. После решения предмет сохраняется за победителем раунда и выдаётся в инвентарь после девятого раунда.
 
 ## Что ещё не реализовано
