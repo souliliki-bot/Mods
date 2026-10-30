@@ -1,0 +1,52 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Обман и доверие — Behavior Pack",
+    "description": "Игровая логика режима «Обман и доверие» для Minecraft Bedrock",
+    "uuid": "1d3a6f40-7b21-4f6c-9d15-2e8a4b6c0f31",
+    "version": [
+      0,
+      1,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      21,
+      80
+    ]
+  },
+  "modules": [
+    {
+      "type": "script",
+      "language": "javascript",
+      "uuid": "2a4b7c91-8d32-4e5f-a061-3f9b5c7d1e42",
+      "version": [
+        0,
+        1,
+        0
+      ],
+      "entry": "scripts/main.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "module_name": "@minecraft/server",
+      "version": "2.11.0"
+    },
+    {
+      "uuid": "3b5c8d02-9e43-4f60-b172-4a0c6d8e2f53",
+      "version": [
+        0,
+        1,
+        0
+      ]
+    }
+  ],
+  "metadata": {
+    "authors": [
+      "souliliki-bot"
+    ],
+    "license": "MIT",
+    "product_type": "addon"
+  }
+}
