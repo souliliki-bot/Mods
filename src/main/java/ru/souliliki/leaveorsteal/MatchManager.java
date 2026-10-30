@@ -193,7 +193,9 @@ public final class MatchManager {
         int round = 1;
         Phase phase = Phase.CLAIM;
         String claim;
-        ItemStack roundItem = ItemStack.EMPTY;\n        Identifier roundItemId;\n        ChestClass roundClass;
+        ItemStack roundItem = ItemStack.EMPTY;
+        Identifier roundItemId;
+        ChestClass roundClass;
 
         Match(UUID first, UUID second) {
             this.first = first;
