@@ -552,7 +552,6 @@ public final class MatchManager {
         match.roundItem = ItemStack.EMPTY;
         if (match.round > match.totalRounds) {
             match.phase = Phase.DUEL;
-            distributeItems(server, match);
             teleportToArena(server, match);
             if (match.botOpponent) {
                 spawnBotOpponent(server, match);
@@ -686,7 +685,7 @@ public final class MatchManager {
         for (Match match : new HashSet<>(matches.values())) {
             if (match.phase == Phase.DUEL && match.botOpponent && match.duelMob != null &&
                 match.duelMob.getUuid().equals(mob.getUuid())) {
-                finishDuel(mob.getServer().getServer(), match, match.first,
+                finishDuel(((ServerWorld) mob.getWorld()).getServer(), match, match.first,
                     "§aТы победил моба-противника в финальной битве!");
                 return;
             }
