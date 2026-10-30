@@ -29,6 +29,8 @@ public final class MatchManager {
     private static final MatchManager INSTANCE = new MatchManager();
     private final Deque<UUID> queue = new ArrayDeque<>();
     private final Map<UUID, Match> matches = new HashMap<>();
+    private final Map<UUID, Lobby> lobbies = new HashMap<>();
+    private final Map<UUID, UUID> invitations = new HashMap<>();
     private final Map<UUID, List<ItemStack>> pendingRewards = new HashMap<>();
     private final Random random = new Random();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -73,13 +75,106 @@ public final class MatchManager {
         }
     }
 
+    public synchronized void showLobbyMenu(ServerPlayerEntity player) {
+        List<String> online = player.getServer().getPlayerManager().getPlayerList().stream()
+            .map(p -> p.getName().getString()).filter(name -> !name.equals(player.getName().getString())).toList();
+        if (ServerPlayNetworking.canSend(player, LobbyMenuPayload.ID)) {
+            ServerPlayNetworking.send(player, new LobbyMenuPayload(online));
+        } else {
+            player.sendMessage(Text.literal("§eДля графического меню установи мод на клиент. Команды: /leaveorsteal lobby create, /leaveorsteal invite <игрок>, /leaveorsteal bot."), false);
+        }
+    }
+
+    public synchronized void createLobby(ServerPlayerEntity host) {
+        UUID id = host.getUuid();
+        if (matches.containsKey(id) || queue.contains(id)) {
+            host.sendMessage(Text.literal("§cСначала выйди из очереди или текущего матча."), false);
+            return;
+        }
+        lobbies.put(id, new Lobby(id));
+        host.sendMessage(Text.literal("§aЛобби создано. Открой меню и нажми «Пригласить» рядом с именем игрока."), false);
+    }
+
+    public synchronized void invite(ServerPlayerEntity host, String targetName) {
+        Lobby lobby = lobbies.get(host.getUuid());
+        if (lobby == null) {
+            host.sendMessage(Text.literal("§cСначала создай лобби в меню."), false);
+            return;
+        }
+        ServerPlayerEntity target = host.getServer().getPlayerManager().getPlayer(targetName);
+        if (target == null || target.getUuid().equals(host.getUuid())) {
+            host.sendMessage(Text.literal("§cИгрок не найден или указан ты сам."), false);
+            return;
+        }
+        if (matches.containsKey(target.getUuid()) || queue.contains(target.getUuid()) || lobbies.containsKey(target.getUuid())) {
+            host.sendMessage(Text.literal("§eЭтот игрок уже занят или создал своё лобби."), false);
+            return;
+        }
+        invitations.put(target.getUuid(), host.getUuid());
+        lobby.invited = target.getUuid();
+        MutableText invitation = Text.literal("§6" + host.getName().getString() + " приглашает тебя в «Обман и доверие». ");
+        invitation.append(Text.literal("§a[Принять]").styled(style -> style.withClickEvent(
+            new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal accept " + host.getName().getString()))));
+        invitation.append(Text.literal(" §c[Отклонить]").styled(style -> style.withClickEvent(
+            new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal decline " + host.getName().getString())));
+        target.sendMessage(invitation, false);
+        host.sendMessage(Text.literal("§aПриглашение отправлено игроку " + target.getName().getString() + "."), false);
+    }
+
+    public synchronized void acceptInvite(ServerPlayerEntity target, String hostName) {
+        ServerPlayerEntity host = target.getServer().getPlayerManager().getPlayer(hostName);
+        UUID invitedHost = invitations.get(target.getUuid());
+        if (host == null || invitedHost == null || !host.getUuid().equals(invitedHost)) {
+            target.sendMessage(Text.literal("§cПриглашение не найдено или уже истекло."), false);
+            return;
+        }
+        if (matches.containsKey(target.getUuid()) || matches.containsKey(host.getUuid())) {
+            target.sendMessage(Text.literal("§cОдин из игроков уже находится в матче."), false);
+            return;
+        }
+        invitations.remove(target.getUuid());
+        lobbies.remove(host.getUuid());
+        Match match = new Match(host.getUuid(), target.getUuid(), roundsPerMatch);
+        matches.put(host.getUuid(), match);
+        matches.put(target.getUuid(), match);
+        beginRound(target.getServer(), match);
+        notifyBoth(target.getServer(), match, "§6Лобби заполнено! Матч начался на " + match.totalRounds + " раундов.");
+    }
+
+    public synchronized void declineInvite(ServerPlayerEntity target, String hostName) {
+        ServerPlayerEntity host = target.getServer().getPlayerManager().getPlayer(hostName);
+        UUID invitedHost = invitations.get(target.getUuid());
+        if (host == null || invitedHost == null || !host.getUuid().equals(invitedHost)) {
+            target.sendMessage(Text.literal("§cПриглашение не найдено или уже истекло."), false);
+            return;
+        }
+        invitations.remove(target.getUuid());
+        host.sendMessage(Text.literal("§e" + target.getName().getString() + " отклонил приглашение."), false);
+        target.sendMessage(Text.literal("§7Приглашение отклонено."), false);
+    }
+
+    public synchronized void startBotMatch(ServerPlayerEntity player) {
+        if (matches.containsKey(player.getUuid()) || queue.contains(player.getUuid())) {
+            player.sendMessage(Text.literal("§cТы уже в очереди или матче."), false);
+            return;
+        }
+        lobbies.remove(player.getUuid());
+        Match match = new Match(player.getUuid(), UUID.randomUUID(), roundsPerMatch);
+        match.botOpponent = true;
+        matches.put(player.getUuid(), match);
+        player.sendMessage(Text.literal("§6Ты начал матч против ИИ-бота. Бот будет принимать решения и вести свои раунды."), false);
+        beginRound(player.getServer(), match);
+    }
+
     public synchronized void showSettings(ServerPlayerEntity player) {
         List<Integer> classWeights = Arrays.stream(ChestClass.values())
             .map(chestClass -> ItemPoolRegistry.get().getClassWeight(chestClass)).toList();
         List<Boolean> enabledClasses = Arrays.stream(ChestClass.values())
             .map(chestClass -> ItemPoolRegistry.get().isClassEnabled(chestClass)).toList();
-        ServerPlayNetworking.send(player, new SettingsSyncPayload(
-            arenaTeleportEnabled, restoreHealthEnabled, restoreHungerEnabled, roundsPerMatch, classWeights, enabledClasses));
+        if (ServerPlayNetworking.canSend(player, SettingsSyncPayload.ID)) {
+            ServerPlayNetworking.send(player, new SettingsSyncPayload(
+                arenaTeleportEnabled, restoreHealthEnabled, restoreHungerEnabled, roundsPerMatch, classWeights, enabledClasses));
+        }
         player.sendMessage(Text.literal("§6§lОбман и доверие — настройки"), false);
         sendSetting(player, "Телепортация на арену", "arena", arenaTeleportEnabled);
         sendSetting(player, "Восстанавливать здоровье", "health", restoreHealthEnabled);
