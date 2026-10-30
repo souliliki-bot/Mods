@@ -22,6 +22,7 @@
 - `/leaveorsteal classes` — семь классов предметов.
 - `/leaveorsteal pool` — количество предметов в каждом пуле.
 - `/leaveorsteal items <namespace>` — число предметов указанного мода.
+- `/leaveorsteal inspect <namespace:item>` — показать класс предмета и источник правила классификации (оператор).
 - `/leaveorsteal reloadconfig` — перезагрузить конфигурацию (требуется уровень прав 2).
 
 ## Сохранение наград
