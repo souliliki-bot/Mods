@@ -51,6 +51,8 @@ public final class MatchManager {
         }
     }
 
+    public synchronized void saveOnShutdown(MinecraftServer server) { saveRewards(server); }
+
     private synchronized void saveRewards(MinecraftServer server) {
         if (rewardsFile == null) rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
         JsonObject root = new JsonObject();
