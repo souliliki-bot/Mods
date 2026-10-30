@@ -14,7 +14,7 @@ const POOLS = {
   RARE: ["minecraft:totem_of_undying","minecraft:elytra","minecraft:trident","minecraft:nether_star","minecraft:heart_of_the_sea","minecraft:conduit","minecraft:shulker_shell","minecraft:echo_shard"],
   LEGENDARY: ["minecraft:netherite_ingot","minecraft:enchanted_golden_apple","minecraft:dragon_breath","minecraft:beacon","minecraft:heavy_core","minecraft:music_disc_otherside"]
 };
-const MOB_TYPES = ["minecraft:ravager","minecraft:warden","minecraft:witch","minecraft:evoker","minecraft:piglin_brute","minecraft:blaze","minecraft: wither_skeleton","minecraft:guardian","minecraft:hoglin","minecraft:phantom"];
+const MOB_TYPES = ["minecraft:ravager","minecraft:warden","minecraft:witch","minecraft:evoker","minecraft:piglin_brute","minecraft:blaze","minecraft:wither_skeleton","minecraft:guardian","minecraft:hoglin","minecraft:phantom"];
 const state = loadState();
 let match;
 let queue = [];
@@ -90,8 +90,8 @@ function safeTeleport(p, point) {
 }
 function restorePlayer(p) {
   try {
-    if (state.settings.restoreHealth) { const h = p.getComponent("minecraft:health"); if (h) h.setCurrentValue(h.effectiveMax); }
-    if (state.settings.restoreHunger) { const food = p.getComponent("minecraft: hunger"); if (food) food.setCurrentValue(20); }
+    if (state.settings.restoreHealth) { const h = p.getComponent("minecraft:health"); if (h) h.resetToMaxValue(); }
+    if (state.settings.restoreHunger) { const food = p.getComponent("minecraft:player.hunger"); if (food) food.setCurrentValue(20); }
   } catch {}
 }
 function cleanChest() {
@@ -171,8 +171,8 @@ function beginRound() {
   cleanChest();
   if (match.round > match.rounds) { beginFinalPhase(); return; }
   match.phase = "claim";
-  match.ownerIndex = (match.round - 1) % match.players.length;
-  match.chooserIndex = (match.ownerIndex + 1) % match.players.length;
+  match.ownerIndex = match.bot ? 0 : (match.round - 1) % match.players.length;
+  match.chooserIndex = match.bot ? 1 : (match.ownerIndex + 1) % match.players.length;
   match.reward = randomReward().item;
   match.shieldUsed = false; match.insightUsed = false; match.doubleReward = false; match.reveal = false;
   match.claim = ""; match.wagerRound = {};
@@ -213,10 +213,10 @@ function resolveChoice(choice, chooser) {
   } else if (match.players[match.chooserIndex]?.id !== chooser.id) return tell(chooser, "Сейчас решение принимает другой игрок.");
   const owner = match.players[match.ownerIndex];
   const stolen = choice === "steal" && !match.shieldUsed;
-  const winner = stolen ? chooser : owner;
+  const winner = match.bot ? owner : (stolen ? chooser : owner);
   const amount = (match.highStakes ? 2 : 1) * (match.doubleReward ? 2 : 1);
-  give(winner, match.reward.typeId, amount);
-  if (stolen) stat(chooser, "steals"); else stat(owner, "kept");
+  if (!match.bot || !stolen) give(winner, match.reward.typeId, amount);
+  if (stolen && !match.bot) stat(chooser, "steals"); else if (!stolen || match.shieldUsed) stat(owner, "kept");
   for (const p of match.players) if (p) stat(p, "rounds");
   announce(stolen ? chooser.name + " украл награду у " + owner.name + "!" : owner.name + " сохранил награду.");
   announce("Получено: " + match.reward.typeId + " ×" + amount + ".");
@@ -309,7 +309,7 @@ function startPvp(list, rounds, opts = {}) {
 }
 function startBot(p, rounds = DEFAULT_ROUNDS, opts = {}) {
   if (match || inMatch(p)) return tell(p, "Ты уже в матче.");
-  match = { players: [p], rounds, round: 1, phase: "starting", bot: true, chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
+  match = { players: [p, undefined], rounds, round: 1, phase: "starting", bot: true, chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
   safeTeleport(p, state.arena.first); restorePlayer(p);
   tell(p, "Матч против ИИ начался! " + rounds + " раундов.");
   beginRound();
