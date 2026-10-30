@@ -93,12 +93,39 @@ public final class MatchManager {
 
     private void sendClassSetting(ServerPlayerEntity player, ChestClass chestClass) {
         boolean enabled = ItemPoolRegistry.get().isClassEnabled(chestClass);
+        int weight = ItemPoolRegistry.get().getClassWeight(chestClass);
+        String className = chestClass.name().toLowerCase(Locale.ROOT);
         MutableText line = Text.literal("§f" + chestClass.displayName() + ": ");
         Text button = Text.literal(enabled ? "[ВКЛ]" : "[ВЫКЛ]").styled(style ->
             style.withColor(enabled ? 0x55FF55 : 0xFF5555)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-                    "/leaveorsteal class " + chestClass.name().toLowerCase(Locale.ROOT))));
-        player.sendMessage(line.append(button), false);
+                    "/leaveorsteal class " + className)));
+        Text decrease = Text.literal(" §c[-]").styled(style ->
+            style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                "/leaveorsteal weight " + className + " " + Math.max(0, weight - 1))));
+        Text increase = Text.literal(" §a[+]").styled(style ->
+            style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                "/leaveorsteal weight " + className + " " + Math.min(100000, weight + 1))));
+        line.append(button).append(Text.literal(" §7Вес: §f" + weight)).append(decrease).append(increase);
+        player.sendMessage(line, false);
+    }
+
+    public synchronized void setClassWeight(ServerPlayerEntity player, String className, int weight) {
+        ChestClass chestClass;
+        try {
+            chestClass = ChestClass.valueOf(className.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage(Text.literal("§cНеизвестный класс предметов."), false);
+            return;
+        }
+        try {
+            ItemPoolRegistry.get().setClassWeight(chestClass, weight);
+            player.sendMessage(Text.literal("§aВес класса " + chestClass.name() + " установлен: " + weight), false);
+        } catch (IOException exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось сохранить вес класса предметов", exception);
+            player.sendMessage(Text.literal("§cНе удалось сохранить вес класса."), false);
+        }
+        showSettings(player);
     }
 
     public synchronized void toggleClass(ServerPlayerEntity player, String className) {
