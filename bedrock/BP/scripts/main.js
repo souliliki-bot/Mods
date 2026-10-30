@@ -135,12 +135,14 @@ function openTrapChest(player, block) {
     if (!match) { cleanChest(); return; }
     const roll = Math.floor(Math.random() * 5);
     if (roll === 0) {
-      const reward = chooseItem("COMMON"); give(player, reward.typeId);
-      announce(player.name + " нашёл в сундуке обычную награду: " + reward.typeId + ".");
+      const reward = chooseItem("COMMON");
+      try { dim.getBlock(chestData.pos).getComponent("minecraft:inventory")?.container.addItem(reward); } catch { give(player, reward.typeId); }
+      announce(player.name + " открыл сундук с обычной наградой: " + reward.typeId + ".");
     } else if (roll === 1) {
       const c = Math.random() < 0.5 ? "RARE" : "LEGENDARY";
-      const reward = chooseItem(c); give(player, reward.typeId);
-      announce(player.name + " нашёл редкую награду: " + reward.typeId + ".");
+      const reward = chooseItem(c);
+      try { dim.getBlock(chestData.pos).getComponent("minecraft:inventory")?.container.addItem(reward); } catch { give(player, reward.typeId); }
+      announce(player.name + " открыл сундук с редкой наградой: " + reward.typeId + ".");
     } else if (roll === 2) {
       player.addEffect("poison", 100, { amplifier: 1, showParticles: true });
       announce(player.name + " попал в ядовитую ловушку сундука!");
@@ -148,7 +150,7 @@ function openTrapChest(player, block) {
       try { dim.createExplosion({ x: chestData.pos.x + 0.5, y: chestData.pos.y + 0.5, z: chestData.pos.z + 0.5 }, 2.5, { breaksBlocks: false, causesFire: false }); } catch {}
       announce("Сундук оказался взрывной ловушкой!");
     } else announce("Сундук оказался пустым.");
-    system.runTimeout(cleanChest, 24);
+    system.runTimeout(cleanChest, 200);
   }, 8);
   return true;
 }
@@ -172,7 +174,7 @@ function beginRound() {
   if (match.round > match.rounds) { beginFinalPhase(); return; }
   match.phase = "claim";
   match.ownerIndex = match.bot ? 0 : (match.round - 1) % match.players.length;
-  match.chooserIndex = match.bot ? 1 : (match.ownerIndex + 1) % match.players.length;
+  match.chooserIndex = match.bot ? 1 : (match.teamMode ? (match.ownerIndex + 2) % match.players.length : (match.ownerIndex + 1) % match.players.length);
   match.reward = randomReward().item;
   match.shieldUsed = false; match.insightUsed = false; match.doubleReward = false; match.reveal = false;
   match.claim = ""; match.wagerRound = {};
@@ -307,6 +309,16 @@ function startPvp(list, rounds, opts = {}) {
   announce("Матч начался! " + rounds + " раундов.");
   beginRound();
 }
+function startTeamMatch(starter) {
+  const all = players();
+  if (match) return tell(starter, "Сейчас уже идёт матч.");
+  if (all.length < 4) return tell(starter, "Для режима 2 на 2 нужны четыре игрока в одном мире.");
+  const list = [starter, ...all.filter(x => x.id !== starter.id).slice(0, 3)];
+  match = { players: list, rounds: state.settings.rounds, round: 1, phase: "starting", bot: false, teamMode: true, escrow: {}, teams: [[list[0],list[1]],[list[2],list[3]]] };
+  list.forEach((p,i) => { safeTeleport(p, i < 2 ? state.arena.first : state.arena.second); restorePlayer(p); });
+  announce("Командный матч 2 на 2 начался! Команда A: " + list[0].name + ", " + list[1].name + ". Команда B: " + list[2].name + ", " + list[3].name + ".");
+  beginRound();
+}
 function startBot(p, rounds = DEFAULT_ROUNDS, opts = {}) {
   if (match || inMatch(p)) return tell(p, "Ты уже в матче.");
   match = { players: [p, undefined], rounds, round: 1, phase: "starting", bot: true, chaosMode: !!opts.chaos, highStakes: !!opts.highStakes, escrow: {} };
@@ -347,6 +359,7 @@ function showMenu(p) {
     .button("Хаос")
     .button("Высокие ставки")
     .button("Встать в очередь 1 на 1")
+    .button("Командный матч 2 на 2")
     .button("Пригласить игрока")
     .button("Статистика")
     .button("Мои награды")
@@ -358,9 +371,10 @@ function showMenu(p) {
     else if (r.selection === 2) startBot(p, 9, { chaos: true });
     else if (r.selection === 3) startBot(p, 9, { highStakes: true });
     else if (r.selection === 4) queueJoin(p);
-    else if (r.selection === 5) showInvite(p);
-    else if (r.selection === 6) showStats(p);
-    else if (r.selection === 7) showLoot(p);
+    else if (r.selection === 5) startTeamMatch(p);
+    else if (r.selection === 6) showInvite(p);
+    else if (r.selection === 7) showStats(p);
+    else if (r.selection === 8) showLoot(p);
     else usage(p);
   }).catch(() => tell(p, "Не удалось открыть меню."));
 }
@@ -383,6 +397,7 @@ function acceptInvite(p, hostName) {
   startPvp([host,p], state.settings.rounds);
 }
 function usage(p) {
+  tell(p, "Команды: !los team — командный матч 2 на 2; !los class <класс>, !los weight <класс> <вес>.");
   tell(p, "Команды: !los menu, start [bot], quick, chaos, highstakes, join, invite <ник>, accept <ник>, decline <ник>, claim <текст>, keep, steal, ability shield|insight, wager, mob fight|leave, stats, loot, status, leave, setarena1, setarena2, settings, rounds <1-30>, classes, pool.");
 }
 function command(p, raw) {
@@ -395,6 +410,7 @@ function command(p, raw) {
   else if (cmd === "chaos") startBot(p,9,{chaos:true});
   else if (cmd === "highstakes") startBot(p,9,{highStakes:true});
   else if (cmd === "join") queueJoin(p);
+  else if (cmd === "team" || cmd === "2v2") startTeamMatch(p);
   else if (cmd === "invite") { const t=onlineByName(parts[2]??""); if(!t)return tell(p,"Игрок не найден."); invites.set(t.id,p.id); tell(t,p.name+" приглашает тебя. !los accept "+p.name); tell(p,"Приглашение отправлено."); }
   else if (cmd === "accept") acceptInvite(p,parts[2]??"");
   else if (cmd === "decline") { const h=onlineByName(parts[2]??""); if(h)tell(h,p.name+" отклонил приглашение."); invites.delete(p.id); }
@@ -418,6 +434,18 @@ function command(p, raw) {
   else if (cmd === "setarena2") setArena(p,"second");
   else if (cmd === "settings") showSettings(p);
   else if (cmd === "rounds") { const n=Math.max(1,Math.min(30,Number(parts[2])||9)); state.settings.rounds=n; saveState(); tell(p,"Число раундов: "+n); }
+  else if (cmd === "class") {
+    const name=(parts[2]??"").toUpperCase();
+    if (!CLASSES.includes(name)) return tell(p,"Неизвестный класс: "+name);
+    if (state.settings.enabledClasses.includes(name)) state.settings.enabledClasses=state.settings.enabledClasses.filter(x=>x!==name);
+    else state.settings.enabledClasses.push(name);
+    saveState(); tell(p,"Класс "+name+" обновлён.");
+  }
+  else if (cmd === "weight") {
+    const name=(parts[2]??"").toUpperCase(), value=Number(parts[3]);
+    if (!CLASSES.includes(name) || !Number.isFinite(value) || value<0 || value>100000) return tell(p,"Формат: !los weight <класс> <0-100000>");
+    state.settings.weights[name]=value; saveState(); tell(p,"Вес "+name+" установлен: "+value);
+  }
   else if (cmd === "classes") tell(p,"Классы: "+CLASSES.join(", "));
   else if (cmd === "pool") tell(p,CLASSES.map(c=>c+": "+POOLS[c].length+" предметов; вес "+state.settings.weights[c]).join("\n"));
   else tell(p,"Неизвестная команда. !los help");
@@ -429,12 +457,13 @@ world.beforeEvents.chatSend.subscribe(ev => {
   system.run(()=>command(p,raw));
 });
 try {
-  world.beforeEvents.playerInteractWithBlock.subscribe(ev => {
+  world.afterEvents.playerInteractWithBlock.subscribe(ev => {
     if (chestData && ev.block.typeId==="minecraft:chest" && ev.block.location.x===chestData.pos.x && ev.block.location.y===chestData.pos.y && ev.block.location.z===chestData.pos.z) {
-      ev.cancel=true;
-      const p=ev.player;
-      system.run(()=>openTrapChest(p,ev.block));
+      openTrapChest(ev.player,ev.block);
     }
+  });
+  world.beforeEvents.playerBreakBlock.subscribe(ev => {
+    if (chestData && ev.block.location.x===chestData.pos.x && ev.block.location.y===chestData.pos.y && ev.block.location.z===chestData.pos.z) ev.cancel=true;
   });
 } catch {}
 world.afterEvents.playerLeave.subscribe(ev => {
@@ -448,8 +477,21 @@ world.afterEvents.entityDie.subscribe(ev => {
   const dead=ev.deadEntity;
   if (match.phase==="duel" && dead.typeId==="minecraft:player") {
     const loser=match.players.find(p=>p?.id===dead.id);
-    const winner=match.players.find(p=>p&&p.id!==dead.id);
-    if (loser) finishMatch(winner,loser,"Победа в финальной дуэли.");
+    if (match.teamMode) {
+      const deadTeam = match.teams.find(team => team.some(p=>p.id===dead.id));
+      const otherTeam = match.teams.find(team => team !== deadTeam);
+      const deadTeamAlive = deadTeam.some(p => p.id!==dead.id && p.getComponent("minecraft:health")?.currentValue > 0);
+      const otherAlive = otherTeam.filter(p => p.getComponent("minecraft:health")?.currentValue > 0);
+      if (!deadTeamAlive && otherAlive.length) {
+        for (const p of otherAlive) stat(p,"wins");
+        for (const p of deadTeam) stat(p,"losses");
+        announce("Команда " + otherAlive.map(p=>p.name).join(" и ") + " победила в финальной дуэли 2 на 2!");
+        cleanChest(); returnEscrow(); match=undefined;
+      }
+    } else {
+      const winner=match.players.find(p=>p&&p.id!==dead.id);
+      if (loser) finishMatch(winner,loser,"Победа в финальной дуэли.");
+    }
   } else if (match.phase==="mob_fight" && dead.id===match.finalMobId) finishMatch(match.players[0],undefined,"Финальный моб повержен!");
 });
 world.afterEvents.playerSpawn.subscribe(ev => {
