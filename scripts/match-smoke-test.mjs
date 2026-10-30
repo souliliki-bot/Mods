@@ -126,6 +126,19 @@ async function main() {
       }
     }
     await waitFor(first, message => message.includes('вышел моб-противник:') && message.includes('экипирован добытыми предметами'), 'spawned and equipped hostile mob duel');
+    const mobDeadline = Date.now() + 10000;
+    let duelMob;
+    while (Date.now() < mobDeadline && !duelMob) {
+      duelMob = Object.values(first.entities).find(entity =>
+        entity.type === 'mob' && entity.position.distanceTo(first.entity.position) < 24
+      );
+      if (!duelMob) await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    if (!duelMob) throw new Error('Physical mob opponent was not visible for right-click interaction');
+    await first.activateEntity(duelMob);
+    await waitFor(first, message => message.includes('[Уйти]') && message.includes('[Сразиться]'), 'mob interaction menu');
+    first.chat('/leaveorsteal mob fight');
+    await waitFor(first, message => message.includes('Бой начался'), 'player starts mob duel');
     first.chat('/leaveorsteal leave');
     await waitFor(first, message => message.includes('Ты сдался и проиграл дуэль'), 'bot duel surrender and mob cleanup');
 
@@ -146,7 +159,7 @@ async function main() {
     first.quit('Simulate disconnect during duel');
     await waitFor(second, message => message.includes('Соперник отключился во время финальной дуэли'), 'disconnect awards duel victory');
 
-    console.log('MATCH_SMOKE_TEST_SUCCESS: human queue match, surrender, physical mob AI match, private lobby invitation/acceptance, nine rounds and duel disconnect passed.');
+    console.log('MATCH_SMOKE_TEST_SUCCESS: human queue match, surrender, right-click mob menu, physical mob AI match, private lobby invitation/acceptance, nine rounds and duel disconnect passed.');
   } finally {
     for (const bot of bots) {
       try { bot.quit('CI test complete'); } catch {}
