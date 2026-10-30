@@ -81,6 +81,16 @@ public class LeaveOrStealMod implements ModInitializer {
                         MatchManager.get().toggleSetting(context.getSource().getPlayer(), "hunger");
                         return 1;
                     })))
+                .then(CommandManager.literal("class").requires(source -> source.hasPermissionLevel(2))
+                    .then(CommandManager.argument("name", StringArgumentType.word()).suggests((context, builder) -> {
+                        for (ChestClass chestClass : ChestClass.values()) builder.suggest(chestClass.name().toLowerCase(Locale.ROOT));
+                        return builder.buildFuture();
+                    }).executes(context -> {
+                        if (context.getSource().getPlayer() == null) return 0;
+                        MatchManager.get().toggleClass(context.getSource().getPlayer(),
+                            StringArgumentType.getString(context, "name"));
+                        return 1;
+                    })))
                 .then(CommandManager.literal("setarena1").requires(source -> source.hasPermissionLevel(2)).executes(context -> {
                     if (context.getSource().getPlayer() == null) return 0;
                     MatchManager.get().setArenaPoint(context.getSource().getPlayer(), true);
