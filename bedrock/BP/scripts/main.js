@@ -24,7 +24,7 @@ let chestData;
 let chestCooldown = 0;
 
 function loadState() {
-  const fallback = { stats: {}, settings: { itemOverrides: {}, enabledNamespaces: ["*"], excludedNamespaces: [], excludedItems: [], excludedPathKeywords: ["stairs","slab","fence","fence_gate","door","trapdoor","carpet","banner","torch","lantern","flower","glass","wool","concrete","terracotta","pane","button","pressure_plate","sign","sapling","leaves","planks","log","wall","candle","coral","pot"], ammoMappings: {}, rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
+  const fallback = { stats: {}, settings: { itemOverrides: {}, enabledNamespaces: ["*"], excludedNamespaces: [], excludedItems: [], bossMobs: MOB_TYPES.slice(), excludedPathKeywords: ["stairs","slab","fence","fence_gate","door","trapdoor","carpet","banner","torch","lantern","flower","glass","wool","concrete","terracotta","pane","button","pressure_plate","sign","sapling","leaves","planks","log","wall","candle","coral","pot"], ammoMappings: {}, rounds: DEFAULT_ROUNDS, arenaTeleport: false, restoreHealth: true, restoreHunger: true, chaos: false, enabledClasses: CLASSES.slice(), weights: { COMMON: 50, IRON_GEAR: 20, DIAMOND_GEAR: 12, NETHERITE_GEAR: 4, POTIONS_FOOD: 7, RARE: 5, LEGENDARY: 2 } }, arena: { first: null, second: null }, achievements: {}, pendingEscrow: {} };
   try {
     const raw = world.getDynamicProperty(STORAGE);
     if (!raw || typeof raw !== "string") return fallback;
@@ -34,6 +34,7 @@ function loadState() {
       excludedNamespaces: parsed.settings?.excludedNamespaces ?? [],
       excludedItems: parsed.settings?.excludedItems ?? [],
       excludedPathKeywords: parsed.settings?.excludedPathKeywords ?? fallback.settings.excludedPathKeywords,
+      bossMobs: parsed.settings?.bossMobs ?? fallback.settings.bossMobs,
       ammoMappings: { ...(fallback.settings.ammoMappings ?? {}), ...(parsed.settings?.ammoMappings ?? {}) } }, arena: { ...fallback.arena, ...(parsed.arena ?? {}) }, pendingEscrow: parsed.pendingEscrow ?? {} };
   } catch { return fallback; }
 }
@@ -350,7 +351,8 @@ function beginFinalPhase() {
   if (match.players.length === 1 || match.bot) {
     match.phase = "mob_choice";
     const p = match.players[0];
-    const type = MOB_TYPES[Math.floor(Math.random() * MOB_TYPES.length)].replace("minecraft: ", "minecraft:");
+    const mobPool = state.settings.bossMobs?.length ? state.settings.bossMobs : MOB_TYPES;
+    const type = mobPool[Math.floor(Math.random() * mobPool.length)].replace("minecraft: ", "minecraft:");
     try {
       const mob = p.dimension.spawnEntity(type, state.arena.second ? { x: state.arena.second.x + 0.5, y: state.arena.second.y, z: state.arena.second.z + 0.5 } : { x: p.location.x + 5, y: p.location.y, z: p.location.z });
       match.finalMobId = mob.id;
@@ -607,6 +609,20 @@ function command(p, raw) {
     const weapon=parts[2]??"", ammo=parts[3]??"", amount=Math.max(1,Math.min(64,Number(parts[4])||16));
     if (!weapon.includes(":") || !ammo.includes(":")) return tell(p,"Формат: !los ammo <namespace:оружие> <namespace:боеприпас> <количество>");
     state.settings.ammoMappings[weapon]={id:ammo,amount}; saveState(); tell(p,"Боеприпасы для "+weapon+" настроены.");
+  }
+  else if (cmd === "boss") {
+    if (!isAdmin(p)) return tell(p,"Настройка списка боссов доступна оператору.");
+    const action=(parts[2]??"").toLowerCase(), id=parts[3]??"";
+    if (!id.includes(":")) return tell(p,"Формат: !los boss add|remove <namespace:entity>");
+    state.settings.bossMobs ??= MOB_TYPES.slice();
+    if (action==="add") {
+      if (!state.settings.bossMobs.includes(id)) state.settings.bossMobs.push(id);
+      saveState(); tell(p,"Моб добавлен в список финальных соперников: "+id);
+    } else if (action==="remove") {
+      state.settings.bossMobs=state.settings.bossMobs.filter(x=>x!==id);
+      if (!state.settings.bossMobs.length) state.settings.bossMobs=MOB_TYPES.slice();
+      saveState(); tell(p,"Моб удалён из списка финальных соперников: "+id);
+    } else tell(p,"Формат: !los boss add|remove <namespace:entity>");
   }
   else if (cmd === "items") {
     const ns=parts[2]??"minecraft";
