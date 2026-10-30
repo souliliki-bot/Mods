@@ -480,7 +480,7 @@ function acceptInvite(p, hostName) {
 }
 function usage(p) {
   tell(p, "Команды: !los team — командный матч 2 на 2; !los class <класс>, !los weight <класс> <вес>.");
-  tell(p, "Команды: !los menu, start [bot], quick, chaos, highstakes, join, invite <ник>, accept <ник>, decline <ник>, claim <текст>, keep, steal, ability shield|insight, wager, mob fight|leave, stats, loot, status, leave, setarena1, setarena2, settings, rounds <1-30>, classes, pool.");
+  tell(p, "Команды: !los menu, start [bot], quick, chaos, highstakes, join, invite <ник>, accept <ник>, decline <ник>, claim <текст>, keep, steal, ability shield|insight, wager, mob fight|leave, stats, loot, status, leave, setarena1, setarena2, settings, rounds <1-30>, classes, pool, inspect <id>, itemclass <id> <класс>.");
 }
 function command(p, raw) {
   const parts = raw.trim().split(/\s+/), cmd = (parts[1] ?? "help").toLowerCase();
@@ -535,8 +535,18 @@ function command(p, raw) {
     if (!CLASSES.includes(name) || !Number.isFinite(value) || value<0 || value>100000) return tell(p,"Формат: !los weight <класс> <0-100000>");
     state.settings.weights[name]=value; saveState(); tell(p,"Вес "+name+" установлен: "+value);
   }
+  else if (cmd === "inspect") {
+    const id=parts[2]??"";
+    let exists=false; try { exists=!!ItemTypes.get(id); } catch {}
+    tell(p,exists ? id+" — класс "+(classifyItem(id)??"ИСКЛЮЧЁН") : "Предмет не найден: "+id);
+  }
+  else if (cmd === "itemclass") {
+    const id=parts[2]??"", cls=(parts[3]??"").toUpperCase();
+    if (!id.includes(":") || !CLASSES.includes(cls)) return tell(p,"Формат: !los itemclass namespace:item КЛАСС");
+    state.settings.itemOverrides ??= {}; state.settings.itemOverrides[id]=cls; saveState(); tell(p,"Для "+id+" задан класс "+cls+".");
+  }
   else if (cmd === "classes") tell(p,"Классы: "+CLASSES.join(", "));
-  else if (cmd === "pool") tell(p,CLASSES.map(c=>c+": "+POOLS[c].length+" предметов; вес "+state.settings.weights[c]).join("\n"));
+  else if (cmd === "pool") tell(p,CLASSES.map(c=>c+": "+getItemPool(c).length+" предметов; вес "+state.settings.weights[c]).join("\n"));
   else tell(p,"Неизвестная команда. !los help");
 }
 world.beforeEvents.chatSend.subscribe(ev => {
