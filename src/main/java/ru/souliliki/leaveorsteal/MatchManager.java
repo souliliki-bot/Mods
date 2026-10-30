@@ -7,6 +7,13 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import net.minecraft.registry.RegistryOps;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.util.WorldSavePath;
+import com.google.gson.*;
+import com.mojang.serialization.JsonOps;
+import java.nio.file.*;
+import java.io.IOException;
 
 import java.util.*;
 
@@ -17,8 +24,54 @@ public final class MatchManager {
     private final Map<UUID, Match> matches = new HashMap<>();
     private final Map<UUID, List<ItemStack>> pendingRewards = new HashMap<>();
     private final Random random = new Random();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private Path rewardsFile;
 
     public static MatchManager get() { return INSTANCE; }
+
+    public synchronized void loadRewards(MinecraftServer server) {
+        rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
+        if (!Files.exists(rewardsFile)) return;
+        try (var reader = Files.newBufferedReader(rewardsFile)) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
+            for (var entry : root.entrySet()) {
+                UUID playerId;
+                try { playerId = UUID.fromString(entry.getKey()); }
+                catch (IllegalArgumentException ignored) { continue; }
+                List<ItemStack> stacks = pendingRewards.computeIfAbsent(playerId, ignored -> new ArrayList<>());
+                for (JsonElement element : entry.getValue().getAsJsonArray()) {
+                    ItemStack.CODEC.parse(ops, element).result().ifPresent(stack -> {
+                        if (!stack.isEmpty()) stacks.add(stack);
+                    });
+                }
+            }
+        } catch (Exception exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось загрузить отложенные награды", exception);
+        }
+    }
+
+    private synchronized void saveRewards(MinecraftServer server) {
+        if (rewardsFile == null) rewardsFile = server.getSavePath(WorldSavePath.ROOT).resolve("data/leave-or-steal-rewards.json");
+        JsonObject root = new JsonObject();
+        var ops = RegistryOps.of(JsonOps.INSTANCE, server.getRegistryManager());
+        for (var entry : pendingRewards.entrySet()) {
+            JsonArray array = new JsonArray();
+            for (ItemStack stack : entry.getValue()) {
+                ItemStack.CODEC.encodeStart(ops, stack).result().ifPresent(array::add);
+            }
+            if (!array.isEmpty()) root.add(entry.getKey().toString(), array);
+        }
+        try {
+            Files.createDirectories(rewardsFile.getParent());
+            Path temp = rewardsFile.resolveSibling(rewardsFile.getFileName() + ".tmp");
+            try (var writer = Files.newBufferedWriter(temp)) { GSON.toJson(root, writer); }
+            try { Files.move(temp, rewardsFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
+            catch (AtomicMoveNotSupportedException ignored) { Files.move(temp, rewardsFile, StandardCopyOption.REPLACE_EXISTING); }
+        } catch (IOException exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось сохранить отложенные награды", exception);
+        }
+    }
 
     public synchronized void joinQueue(ServerPlayerEntity player) {
         deliverPendingRewards(player);
@@ -162,6 +215,7 @@ public final class MatchManager {
                 List<ItemStack> pending = pendingRewards.computeIfAbsent(id, ignored -> new ArrayList<>());
                 for (ItemStack stack : match.items.get(id)) pending.add(stack.copy());
                 match.items.get(id).clear();
+                saveRewards(server);
                 continue;
             }
             List<ItemStack> loot = match.items.get(id);
@@ -192,6 +246,7 @@ public final class MatchManager {
             player.getInventory().insertStack(remainder);
             if (!remainder.isEmpty()) player.dropItem(remainder, false);
         }
+        saveRewards(player.getServer());
         player.sendMessage(Text.literal("§aТвои награды за прерванный матч выданы."), false);
     }
 
@@ -213,6 +268,7 @@ public final class MatchManager {
         matches.remove(match.first);
         matches.remove(match.second);
         notifyBoth(server, match, message);
+        saveRewards(server);
     }
 
     private void notifyBoth(MinecraftServer server, Match match, String message) {
