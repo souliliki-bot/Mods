@@ -7,6 +7,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -111,3 +114,21 @@ jobs:
         with:
           name: leave-or-steal-mod
           path: build/libs/*.jar
+      - name: Publish GitHub release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0
+          name: Обман и доверие v0.1.0
+          body: |
+            Первый тестовый релиз мода «Обман и доверие».
+
+            **Версия игры:** Minecraft Java 1.21.1
+            **Загрузчик:** Fabric
+            **Java:** 21
+
+            Включает лобби, приглашения игроков, матчи с виртуальным AI-ботом, 9 раундов и финальную PvP-дуэль. Финальная дуэль в режиме с ботом симулируется.
+          files: build/libs/*.jar
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: true
