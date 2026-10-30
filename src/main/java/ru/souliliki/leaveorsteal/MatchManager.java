@@ -76,6 +76,10 @@ public final class MatchManager {
         sendSetting(player, "Телепортация на арену", "arena", arenaTeleportEnabled);
         sendSetting(player, "Восстанавливать здоровье", "health", restoreHealthEnabled);
         sendSetting(player, "Восстанавливать голод", "hunger", restoreHungerEnabled);
+        player.sendMessage(Text.literal("§6§lКлассы предметов в матчах"), false);
+        for (ChestClass chestClass : ChestClass.values()) {
+            sendClassSetting(player, chestClass);
+        }
         player.sendMessage(Text.literal("§7Нажми на [ВКЛ]/[ВЫКЛ], чтобы изменить параметр."), false);
     }
 
@@ -85,6 +89,35 @@ public final class MatchManager {
             style.withColor(enabled ? 0x55FF55 : 0xFF5555)
                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal setting " + key)));
         player.sendMessage(line.append(button), false);
+    }
+
+    private void sendClassSetting(ServerPlayerEntity player, ChestClass chestClass) {
+        boolean enabled = ItemPoolRegistry.get().isClassEnabled(chestClass);
+        MutableText line = Text.literal("§f" + chestClass.displayName() + ": ");
+        Text button = Text.literal(enabled ? "[ВКЛ]" : "[ВЫКЛ]").styled(style ->
+            style.withColor(enabled ? 0x55FF55 : 0xFF5555)
+                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                    "/leaveorsteal class " + chestClass.name().toLowerCase(Locale.ROOT))));
+        player.sendMessage(line.append(button), false);
+    }
+
+    public synchronized void toggleClass(ServerPlayerEntity player, String className) {
+        ChestClass chestClass;
+        try {
+            chestClass = ChestClass.valueOf(className.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage(Text.literal("§cНеизвестный класс предметов."), false);
+            return;
+        }
+        try {
+            ItemPoolRegistry.get().toggleClass(chestClass);
+            player.sendMessage(Text.literal("§aНастройка класса обновлена. Предметов в пуле: " +
+                ItemPoolRegistry.get().count(chestClass)), false);
+        } catch (IOException exception) {
+            LeaveOrStealMod.LOGGER.error("Не удалось сохранить настройки классов предметов", exception);
+            player.sendMessage(Text.literal("§cНе удалось сохранить конфигурацию предметов."), false);
+        }
+        showSettings(player);
     }
 
     public synchronized void toggleSetting(ServerPlayerEntity player, String key) {
