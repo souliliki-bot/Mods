@@ -7,7 +7,8 @@
   "authors": ["souliliki-bot"],
   "environment": "*",
   "entrypoints": {
-    "main": ["ru.souliliki.leaveorsteal.LeaveOrStealMod"]
+    "main": ["ru.souliliki.leaveorsteal.LeaveOrStealMod"],
+    "client": ["ru.souliliki.leaveorsteal.LeaveOrStealClient"]
   },
   "depends": {
     "fabricloader": ">=0.16.0",
