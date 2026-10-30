@@ -79,7 +79,7 @@ public final class MatchManager {
         List<String> online = player.getServer().getPlayerManager().getPlayerList().stream()
             .map(p -> p.getName().getString()).filter(name -> !name.equals(player.getName().getString())).toList();
         if (ServerPlayNetworking.canSend(player, LobbyMenuPayload.ID)) {
-            ServerPlayNetworking.send(player, new LobbyMenuPayload(online));
+            ServerPlayNetworking.send(player, new LobbyMenuPayload(online, player.hasPermissionLevel(2)));
         } else {
             player.sendMessage(Text.literal("§eДля графического меню установи мод на клиент. Команды: /leaveorsteal lobby create, /leaveorsteal invite <игрок>, /leaveorsteal bot."), false);
         }
