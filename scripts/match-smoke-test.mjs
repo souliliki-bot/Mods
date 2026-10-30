@@ -125,7 +125,16 @@ async function main() {
         await new Promise(resolve => setTimeout(resolve, 900));
       }
     }
-    await waitFor(first, message => message.includes('победил ИИ-бота') || message.includes('проиграл финальную PvP-дуэль'), 'simulated bot duel result');
+    await waitFor(first, message => message.includes('вышел моб-противник'), 'hostile mob duel start');
+    const mobDeadline = Date.now() + 10000;
+    let mobSeen = false;
+    while (Date.now() < mobDeadline && !mobSeen) {
+      mobSeen = Object.values(first.entities).some(entity =>
+        entity.type === 'mob' && entity.position.distanceTo(first.entity.position) < 24
+      );
+      if (!mobSeen) await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    if (!mobSeen) throw new Error('Physical hostile mob opponent did not appear near the player');
 
     histories.get(first).length = 0;
     histories.get(second).length = 0;
@@ -144,7 +153,7 @@ async function main() {
     first.quit('Simulate disconnect during duel');
     await waitFor(second, message => message.includes('Соперник отключился во время финальной дуэли'), 'disconnect awards duel victory');
 
-    console.log('MATCH_SMOKE_TEST_SUCCESS: human queue match, surrender, AI match, private lobby invitation/acceptance, nine rounds and duel disconnect passed.');
+    console.log('MATCH_SMOKE_TEST_SUCCESS: human queue match, surrender, physical mob AI match, private lobby invitation/acceptance, nine rounds and duel disconnect passed.');
   } finally {
     for (const bot of bots) {
       try { bot.quit('CI test complete'); } catch {}
