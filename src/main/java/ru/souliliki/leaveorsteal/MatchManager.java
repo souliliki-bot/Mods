@@ -15,11 +15,13 @@ public final class MatchManager {
     private static final MatchManager INSTANCE = new MatchManager();
     private final Deque<UUID> queue = new ArrayDeque<>();
     private final Map<UUID, Match> matches = new HashMap<>();
+    private final Map<UUID, List<ItemStack>> pendingRewards = new HashMap<>();
     private final Random random = new Random();
 
     public static MatchManager get() { return INSTANCE; }
 
     public synchronized void joinQueue(ServerPlayerEntity player) {
+        deliverPendingRewards(player);
         if (matches.containsKey(player.getUuid()) || queue.contains(player.getUuid())) {
             player.sendMessage(Text.literal("§eТы уже в очереди или матче."), false);
             return;
@@ -156,7 +158,12 @@ public final class MatchManager {
     private void distributeItems(MinecraftServer server, Match match) {
         for (UUID id : List.of(match.first, match.second)) {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(id);
-            if (player == null) continue;
+            if (player == null) {
+                List<ItemStack> pending = pendingRewards.computeIfAbsent(id, ignored -> new ArrayList<>());
+                for (ItemStack stack : match.items.get(id)) pending.add(stack.copy());
+                match.items.get(id).clear();
+                continue;
+            }
             List<ItemStack> loot = match.items.get(id);
             Iterator<ItemStack> iterator = loot.iterator();
             while (iterator.hasNext()) {
@@ -167,6 +174,25 @@ public final class MatchManager {
                 iterator.remove();
             }
         }
+    }
+
+    public synchronized void onDisconnect(ServerPlayerEntity player) {
+        queue.remove(player.getUuid());
+        Match match = matches.get(player.getUuid());
+        if (match != null) {
+            finishMatch(player.getServer(), match, "§cСоперник отключился. Матч завершён; награды будут выданы при следующем входе.");
+        }
+    }
+
+    private void deliverPendingRewards(ServerPlayerEntity player) {
+        List<ItemStack> pending = pendingRewards.remove(player.getUuid());
+        if (pending == null || pending.isEmpty()) return;
+        for (ItemStack stack : pending) {
+            ItemStack remainder = stack.copy();
+            player.getInventory().insertStack(remainder);
+            if (!remainder.isEmpty()) player.dropItem(remainder, false);
+        }
+        player.sendMessage(Text.literal("§aТвои награды за прерванный матч выданы."), false);
     }
 
     public synchronized void leave(ServerPlayerEntity player) {
