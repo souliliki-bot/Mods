@@ -2,6 +2,11 @@ package ru.souliliki.leaveorsteal;
 
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.ArmorItem;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.mob.Hostile;
+import net.minecraft.entity.SpawnGroup;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
@@ -550,12 +555,11 @@ public final class MatchManager {
             distributeItems(server, match);
             teleportToArena(server, match);
             if (match.botOpponent) {
-                boolean humanWins = random.nextInt(100) < 65;
-                UUID winnerId = humanWins ? match.first : match.second;
-                finishDuel(server, match, winnerId, humanWins
-                    ? "§aТы победил ИИ-бота в финальной дуэли!"
-                    : "§cИИ-бот победил в финальной дуэли. Попробуй ещё раз!");
+                spawnBotOpponent(server, match);
+                distributeItems(server, match);
+                notifyBoth(server, match, "§dРаунды завершены! Против тебя вышел моб-противник, экипированный добытыми предметами. Победи его в бою!");
             } else {
+                distributeItems(server, match);
                 notifyBoth(server, match,
                     "§d" + match.totalRounds + " раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль. Команда /leave означает сдачу.");
             }
@@ -587,6 +591,108 @@ public final class MatchManager {
         if (first != null) prepareForDuel(first);
         if (second != null) prepareForDuel(second);
     }
+    private void spawnBotOpponent(MinecraftServer server, Match match) {
+        ServerPlayerEntity player = server.getPlayerManager().getPlayer(match.first);
+        if (player == null) {
+            finishDuel(server, match, match.second, "§cИгрок покинул сервер до начала битвы.");
+            return;
+        }
+
+        ServerWorld world = player.getServerWorld();
+        double x = player.getX() + 3.0;
+        double y = player.getY();
+        double z = player.getZ();
+        if (arenaSecond != null) {
+            Identifier dimensionId = Identifier.tryParse(arenaSecond.dimension);
+            if (dimensionId != null) {
+                ServerWorld arenaWorld = server.getWorld(RegistryKey.of(RegistryKeys.WORLD, dimensionId));
+                if (arenaWorld != null) {
+                    world = arenaWorld;
+                    x = arenaSecond.x;
+                    y = arenaSecond.y;
+                    z = arenaSecond.z;
+                }
+            }
+        }
+
+        List<MobEntity> candidates = new ArrayList<>();
+        for (var type : Registries.ENTITY_TYPE) {
+            if (type.getSpawnGroup() != SpawnGroup.MONSTER) continue;
+            var entity = type.create(world);
+            if (entity instanceof MobEntity mob && entity instanceof Hostile) candidates.add(mob);
+            else if (entity != null) entity.discard();
+        }
+        if (candidates.isEmpty()) {
+            player.sendMessage(Text.literal("§cНа сервере не найдено враждебных мобов для финальной битвы."), false);
+            finishDuel(server, match, match.first, "§aПротивник не появился — победа засчитана.");
+            return;
+        }
+
+        MobEntity mob = candidates.get(random.nextInt(candidates.size()));
+        for (MobEntity candidate : candidates) if (candidate != mob) candidate.discard();
+        mob.refreshPositionAndAngles(x, y, z, player.getYaw() + 180.0F, 0.0F);
+        mob.setPersistent();
+        mob.setCanPickUpLoot(false);
+        mob.setCustomName(Text.literal("Соперник: " + mob.getName().getString()));
+        mob.setCustomNameVisible(true);
+        mob.setTarget(player);
+        for (EquipmentSlot slot : EquipmentSlot.values()) mob.setEquipmentDropChance(slot, 0.0F);
+
+        List<ItemStack> earned = match.items.get(match.second);
+        ItemStack bestWeapon = ItemStack.EMPTY;
+        int bestWeaponScore = -1;
+        for (ItemStack stack : earned) {
+            if (stack == null || stack.isEmpty()) continue;
+            if (stack.getItem() instanceof ArmorItem armor) {
+                mob.equipStack(armor.getSlotType(), stack.copy());
+                continue;
+            }
+            String path = Registries.ITEM.getId(stack.getItem()).getPath().toLowerCase(Locale.ROOT);
+            if (isCombatWeapon(path)) {
+                int score = weaponScore(path);
+                if (score > bestWeaponScore) {
+                    bestWeapon = stack;
+                    bestWeaponScore = score;
+                }
+            }
+        }
+        if (!bestWeapon.isEmpty()) mob.equipStack(EquipmentSlot.MAINHAND, bestWeapon.copy());
+
+        if (!world.spawnEntity(mob)) {
+            mob.discard();
+            finishDuel(server, match, match.first, "§aПротивник не смог появиться на арене — победа засчитана.");
+            return;
+        }
+        match.duelMob = mob;
+        mob.setTarget(player);
+    }
+
+    private boolean isCombatWeapon(String path) {
+        return path.contains("sword") || path.contains("axe") || path.contains("bow") ||
+            path.contains("crossbow") || path.contains("trident") || path.contains("mace") ||
+            path.contains("dagger") || path.contains("spear") || path.contains("staff") ||
+            path.contains("wand") || path.contains("katana") || path.contains("scythe") ||
+            path.contains("hammer") || path.contains("greatsword") || path.contains("battleaxe");
+    }
+
+    private int weaponScore(String path) {
+        if (path.contains("netherite")) return 6;
+        if (path.contains("diamond")) return 5;
+        if (path.contains("iron")) return 4;
+        return 3;
+    }
+
+    public synchronized void onMobDeath(MobEntity mob) {
+        for (Match match : new HashSet<>(matches.values())) {
+            if (match.phase == Phase.DUEL && match.botOpponent && match.duelMob != null &&
+                match.duelMob.getUuid().equals(mob.getUuid())) {
+                finishDuel(mob.getServer().getServer(), match, match.first,
+                    "§aТы победил моба-противника в финальной битве!");
+                return;
+            }
+        }
+    }
+
     private void teleport(ServerPlayerEntity player, ArenaPoint point) {
         Identifier dimensionId = Identifier.tryParse(point.dimension);
         if (dimensionId == null) return;
@@ -642,8 +748,12 @@ public final class MatchManager {
     public synchronized void onDeath(ServerPlayerEntity player) {
         Match match = matches.get(player.getUuid());
         if (match == null || match.phase != Phase.DUEL) return;
-        finishDuel(player.getServer(), match, match.other(player.getUuid()),
-            "§aТы победил в финальной PvP-дуэли!");
+        if (match.botOpponent) {
+            finishDuel(player.getServer(), match, match.second, "§cМоб-противник победил в финальной битве.");
+        } else {
+            finishDuel(player.getServer(), match, match.other(player.getUuid()),
+                "§aТы победил в финальной PvP-дуэли!");
+        }
     }
 
     private void deliverPendingRewards(ServerPlayerEntity player) {
@@ -664,7 +774,7 @@ public final class MatchManager {
         if (match == null) return;
         if (match.phase == Phase.DUEL) {
             finishDuel(player.getServer(), match, match.other(player.getUuid()),
-                "§aСоперник сдался. Ты победил в финальной PvP-дуэли.");
+                match.botOpponent ? "§cТы сдался — моб-противник победил." : "§aСоперник сдался. Ты победил в финальной PvP-дуэли.");
             player.sendMessage(Text.literal("§cТы сдался и проиграл дуэль."), false);
         } else {
             finishMatch(player.getServer(), match, "§cСоперник покинул матч. Матч завершён, накопленные награды выданы.");
@@ -674,6 +784,7 @@ public final class MatchManager {
     private void finishDuel(MinecraftServer server, Match match, UUID winner, String winnerMessage) {
         if (match.phase != Phase.DUEL) return;
         match.phase = Phase.FINISHED;
+        if (match.duelMob != null && match.duelMob.isAlive()) match.duelMob.discard();
         matches.remove(match.first);
         matches.remove(match.second);
         for (UUID id : List.of(match.first, match.second)) {
@@ -743,6 +854,7 @@ public final class MatchManager {
         final List<ItemStack> roundBonusItems = new ArrayList<>();
         Identifier roundItemId;
         ChestClass roundClass;
+        MobEntity duelMob;
 
         Match(UUID first, UUID second, int totalRounds) {
             this.totalRounds = totalRounds;
