@@ -40,6 +40,7 @@ public final class MatchManager {
     private boolean arenaTeleportEnabled = true;
     private boolean restoreHealthEnabled = true;
     private boolean restoreHungerEnabled = true;
+    private int roundsPerMatch = 9;
 
     public static MatchManager get() { return INSTANCE; }
 
@@ -51,6 +52,7 @@ public final class MatchManager {
             arenaTeleportEnabled = !root.has("arenaTeleport") || root.get("arenaTeleport").getAsBoolean();
             restoreHealthEnabled = !root.has("restoreHealth") || root.get("restoreHealth").getAsBoolean();
             restoreHungerEnabled = !root.has("restoreHunger") || root.get("restoreHunger").getAsBoolean();
+            roundsPerMatch = root.has("roundsPerMatch") ? Math.max(1, Math.min(30, root.get("roundsPerMatch").getAsInt())) : 9;
         } catch (Exception exception) {
             LeaveOrStealMod.LOGGER.error("Не удалось загрузить настройки мода", exception);
         }
@@ -62,6 +64,7 @@ public final class MatchManager {
         root.addProperty("arenaTeleport", arenaTeleportEnabled);
         root.addProperty("restoreHealth", restoreHealthEnabled);
         root.addProperty("restoreHunger", restoreHungerEnabled);
+        root.addProperty("roundsPerMatch", roundsPerMatch);
         try {
             Files.createDirectories(settingsFile.getParent());
             try (var writer = Files.newBufferedWriter(settingsFile)) { GSON.toJson(root, writer); }
@@ -76,11 +79,14 @@ public final class MatchManager {
         List<Boolean> enabledClasses = Arrays.stream(ChestClass.values())
             .map(chestClass -> ItemPoolRegistry.get().isClassEnabled(chestClass)).toList();
         ServerPlayNetworking.send(player, new SettingsSyncPayload(
-            arenaTeleportEnabled, restoreHealthEnabled, restoreHungerEnabled, classWeights, enabledClasses));
+            arenaTeleportEnabled, restoreHealthEnabled, restoreHungerEnabled, roundsPerMatch, classWeights, enabledClasses));
         player.sendMessage(Text.literal("§6§lОбман и доверие — настройки"), false);
         sendSetting(player, "Телепортация на арену", "arena", arenaTeleportEnabled);
         sendSetting(player, "Восстанавливать здоровье", "health", restoreHealthEnabled);
         sendSetting(player, "Восстанавливать голод", "hunger", restoreHungerEnabled);
+        player.sendMessage(Text.literal("§fКоличество раундов: §e" + roundsPerMatch + " §c[-] §a[+]" ).styled(style -> style
+            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/leaveorsteal rounds " + Math.max(1, roundsPerMatch - 1)))), false);
+        player.sendMessage(Text.literal("§7Увеличить количество раундов: /leaveorsteal rounds " + Math.min(30, roundsPerMatch + 1)), false);
         player.sendMessage(Text.literal("§6§lКлассы предметов в матчах"), false);
         for (ChestClass chestClass : ChestClass.values()) {
             sendClassSetting(player, chestClass);
@@ -149,6 +155,13 @@ public final class MatchManager {
             LeaveOrStealMod.LOGGER.error("Не удалось сохранить настройки классов предметов", exception);
             player.sendMessage(Text.literal("§cНе удалось сохранить конфигурацию предметов."), false);
         }
+        showSettings(player);
+    }
+
+    public synchronized void setRoundsPerMatch(ServerPlayerEntity player, int rounds) {
+        roundsPerMatch = Math.max(1, Math.min(30, rounds));
+        saveSettings();
+        player.sendMessage(Text.literal("§aКоличество раундов установлено: " + roundsPerMatch), false);
         showSettings(player);
     }
 
@@ -304,12 +317,12 @@ public final class MatchManager {
                 if (second != null) queue.addFirst(b);
                 continue;
             }
-            Match match = new Match(a, b);
+            Match match = new Match(a, b, roundsPerMatch);
             matches.put(a, match);
             matches.put(b, match);
             beginRound(server, match);
-            first.sendMessage(Text.literal("§6Матч начался! Всего 9 раундов."), false);
-            second.sendMessage(Text.literal("§6Матч начался! Всего 9 раундов."), false);
+            first.sendMessage(Text.literal("§6Матч начался! Всего " + match.totalRounds + " раундов."), false);
+            second.sendMessage(Text.literal("§6Матч начался! Всего " + match.totalRounds + " раундов."), false);
         }
     }
 
@@ -334,16 +347,16 @@ public final class MatchManager {
 
         ServerPlayerEntity owner = server.getPlayerManager().getPlayer(match.owner);
         ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(match.other(match.owner));
-        if (owner != null) owner.sendMessage(Text.literal("§aРаунд " + match.round + "/9. Твой тайный предмет: §f" +
+        if (owner != null) owner.sendMessage(Text.literal("§aРаунд " + match.round + "/" + match.totalRounds + ". Твой тайный предмет: §f" +
             match.roundItem.getName().getString() + "§a (§f" + (match.roundClass == null ? "без класса" : match.roundClass.displayName()) + "§a). Расскажи о нём сопернику командой §e/leaveorsteal claim <текст>§a."), false);
-        if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/9. Соперник выбирает предмет и готовит заявление. Сам предмет пока скрыт."), false);
+        if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Соперник выбирает предмет и готовит заявление. Сам предмет пока скрыт."), false);
     }
 
     public synchronized String status(ServerPlayerEntity player) {
         Match match = matches.get(player.getUuid());
         if (match == null) return queue.contains(player.getUuid()) ? "Ожидание соперника" : "Не в матче";
         if (match.phase == Phase.DUEL) return "Финальная PvP-дуэль";
-        return "Раунд " + match.round + "/9, этап: " + match.phase + ", твоя роль: " +
+        return "Раунд " + match.round + "/" + match.totalRounds + ", этап: " + match.phase + ", твоя роль: " +
             (match.owner.equals(player.getUuid()) ? "владелец предмета" : "принимаешь решение");
     }
 
@@ -401,12 +414,12 @@ public final class MatchManager {
 
         match.round++;
         match.roundItem = ItemStack.EMPTY;
-        if (match.round > 9) {
+        if (match.round > match.totalRounds) {
             match.phase = Phase.DUEL;
             distributeItems(player.getServer(), match);
             teleportToArena(player.getServer(), match);
             notifyBoth(player.getServer(), match,
-                "§d9 раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль. Команда /leave означает сдачу.");
+                "§d" + match.totalRounds + " раундов завершены! Награды у вас в инвентарях. Начинается финальная PvP-дуэль. Команда /leave означает сдачу.");
         } else {
             match.owner = match.other(previousOwner);
             beginRound(player.getServer(), match);
@@ -565,6 +578,7 @@ public final class MatchManager {
     private static final class Match {
         final UUID first, second;
         final Map<UUID, List<ItemStack>> items = new HashMap<>();
+        final int totalRounds;
         UUID owner;
         int round = 1;
         Phase phase = Phase.CLAIM;
@@ -573,7 +587,8 @@ public final class MatchManager {
         Identifier roundItemId;
         ChestClass roundClass;
 
-        Match(UUID first, UUID second) {
+        Match(UUID first, UUID second, int totalRounds) {
+            this.totalRounds = totalRounds;
             this.first = first;
             this.second = second;
             this.owner = first;
