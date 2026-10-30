@@ -21,7 +21,7 @@ public final class LeaveOrStealClient implements ClientModInitializer {
         ));
 
         ClientPlayNetworking.registerGlobalReceiver(LobbyMenuPayload.ID, (payload, context) ->
-            context.client().execute(() -> context.client().setScreen(new LobbyScreen(payload.onlinePlayers())))
+            context.client().execute(() -> context.client().setScreen(new LobbyScreen(payload.onlinePlayers(), payload.canManageSettings())))
         );
 
         ClientPlayNetworking.registerGlobalReceiver(SettingsSyncPayload.ID, (payload, context) ->
