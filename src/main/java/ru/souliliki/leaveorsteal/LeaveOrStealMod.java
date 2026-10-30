@@ -159,9 +159,10 @@ public class LeaveOrStealMod implements ModInitializer {
                     })))
                 .then(CommandManager.literal("pool").executes(context -> {
                     String summary = Arrays.stream(ChestClass.values())
-                        .map(c -> c.name() + ": " + ItemPoolRegistry.get().count(c))
+                        .map(c -> c.name() + ": " + ItemPoolRegistry.get().count(c) +
+                            " предметов, вес " + ItemPoolRegistry.get().getClassWeight(c))
                         .reduce((a, b) -> a + "\n" + b).orElse("");
-                    context.getSource().sendFeedback(() -> Text.literal("Пулы предметов:\n" + summary +
+                    context.getSource().sendFeedback(() -> Text.literal("Пулы предметов (количество и относительный вес):\n" + summary +
                         "\nФайл: config/leave-or-steal.properties"), false);
                     return 1;
                 }))
