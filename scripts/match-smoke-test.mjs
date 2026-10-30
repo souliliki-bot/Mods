@@ -127,10 +127,13 @@ async function main() {
 
     histories.get(first).length = 0;
     histories.get(second).length = 0;
+    await new Promise(resolve => setTimeout(resolve, 1200));
     first.chat('/leaveorsteal lobby create');
     await waitFor(first, message => message.includes('Лобби создано'), 'private lobby creation');
+    await new Promise(resolve => setTimeout(resolve, 1200));
     first.chat('/leaveorsteal invite LeaveStealTestB');
     await waitFor(second, message => message.includes('приглашает тебя'), 'lobby invitation received');
+    await new Promise(resolve => setTimeout(resolve, 1200));
     histories.get(first).length = 0;
     histories.get(second).length = 0;
     second.chat('/leaveorsteal accept LeaveStealTestA');
