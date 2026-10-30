@@ -30,8 +30,14 @@ public final class ItemPoolRegistry {
             config.clear();
             config.load(reader);
         }
-        config.putIfAbsent("excludedPathKeywords",
-            "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book");
+        boolean addedDefaultFilter = config.putIfAbsent("excludedPathKeywords",
+            "spawn_egg,command_block,barrier,structure_block,jigsaw,debug_stick,knowledge_book") == null;
+        if (addedDefaultFilter) {
+            try (Writer writer = Files.newBufferedWriter(configPath)) {
+                config.store(writer, "Leave or Steal item pools. Chest classes: " +
+                    String.join(", ", Arrays.stream(ChestClass.values()).map(Enum::name).toList()));
+            }
+        }
         rebuildPools();
     }
 
