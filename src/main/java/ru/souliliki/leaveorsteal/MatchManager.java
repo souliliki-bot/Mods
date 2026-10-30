@@ -5,7 +5,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.item.ArmorItem;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.mob.MobEntity;
-import net.minecraft.entity.mob.Hostile;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
@@ -618,7 +617,7 @@ public final class MatchManager {
         for (var type : Registries.ENTITY_TYPE) {
             if (type.getSpawnGroup() != SpawnGroup.MONSTER) continue;
             var entity = type.create(world);
-            if (entity instanceof MobEntity mob && entity instanceof Hostile) candidates.add(mob);
+            if (entity instanceof MobEntity mob) candidates.add(mob);
             else if (entity != null) entity.discard();
         }
         if (candidates.isEmpty()) {
