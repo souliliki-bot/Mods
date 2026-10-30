@@ -5,6 +5,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -40,13 +41,18 @@ public class LeaveOrStealMod implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
             MatchManager.get().onDisconnect(handler.getPlayer())
         );
+        ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
+            if (entity instanceof net.minecraft.server.network.ServerPlayerEntity player) {
+                MatchManager.get().onDeath(player);
+            }
+        });
 
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             dispatcher.register(CommandManager.literal("leaveorsteal")
                 .then(CommandManager.literal("help").executes(context -> {
                     context.getSource().sendFeedback(() -> Text.literal(
-                        "Команды: join, claim <текст>, keep, steal, loot, status, leave, classes, pool, items <namespace>, reloadconfig."
+                        "Команды: join, claim <текст>, keep, steal, loot, status, leave (сдаться в дуэли), classes, pool, items <namespace>, reloadconfig."
                     ), false);
                     return 1;
                 }))
