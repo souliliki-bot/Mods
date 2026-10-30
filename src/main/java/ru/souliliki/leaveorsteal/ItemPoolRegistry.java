@@ -76,8 +76,8 @@ public final class ItemPoolRegistry {
     public synchronized ChestClass getClassFor(Identifier id) {
         String override = config.getProperty("item." + id, "").trim();
         if (!override.isEmpty()) {
-            try { return ChestClass.valueOf(override.toUpperCase(Locale.ROOT)); }
-            catch (IllegalArgumentException ignored) { return null; }
+            ChestClass manualClass = parseClass(override);
+            if (manualClass != null) return manualClass;
         }
         Item item = Registries.ITEM.get(id);
         if (item == null) return null;
