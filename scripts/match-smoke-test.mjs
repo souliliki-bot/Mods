@@ -130,11 +130,17 @@ async function main() {
     let duelMob;
     while (Date.now() < mobDeadline && !duelMob) {
       duelMob = Object.values(first.entities).find(entity =>
-        entity.type === 'mob' && entity.position.distanceTo(first.entity.position) < 24
+        entity !== first.entity && entity.type !== 'player' &&
+        entity.position && entity.position.distanceTo(first.entity.position) < 24
       );
       if (!duelMob) await new Promise(resolve => setTimeout(resolve, 200));
     }
-    if (!duelMob) throw new Error('Physical mob opponent was not visible for right-click interaction');
+    if (!duelMob) {
+      const nearby = Object.values(first.entities).map(entity => ({
+        name: entity.name, type: entity.type, position: entity.position
+      }));
+      throw new Error('Physical mob opponent was not visible for right-click interaction. Tracked entities: ' + JSON.stringify(nearby));
+    }
     await first.activateEntity(duelMob);
     await waitFor(first, message => message.includes('[Уйти]') && message.includes('[Сразиться]'), 'mob interaction menu');
     first.chat('/leaveorsteal mob fight');
