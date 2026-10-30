@@ -462,7 +462,8 @@ function showMenu(p) {
   }).catch(() => tell(p, "Не удалось открыть меню."));
 }
 function showInvite(p) {
-  const others = players().filter(x => x.id !== p.id);
+  lobbies.set(p.id,true);
+  const others = players().filter(x => x.id !== p.id && !inMatch(x));
   if (!others.length) return tell(p, "Сейчас нет других игроков в мире.");
   new ModalFormData().title("Приглашение").dropdown("Кого пригласить?", others.map(x => x.name), 0)
     .show(p).then(r => {
@@ -475,13 +476,13 @@ function showInvite(p) {
 }
 function acceptInvite(p, hostName) {
   const host = onlineByName(hostName), hostId = invites.get(p.id);
-  if (!host || host.id !== hostId || match) return tell(p, "Приглашение не найдено или матч уже занят.");
-  invites.delete(p.id);
+  if (!host || host.id !== hostId || match || !lobbies.has(host.id) || inMatch(p)) return tell(p, "Приглашение не найдено, лобби закрыто или матч уже занят.");
+  invites.delete(p.id); lobbies.delete(host.id);
   startPvp([host,p], state.settings.rounds);
 }
 function usage(p) {
   tell(p, "Команды: !los team — командный матч 2 на 2; !los class <класс>, !los weight <класс> <вес>.");
-  tell(p, "Команды: !los menu, start [bot], quick, chaos, highstakes, join, invite <ник>, accept <ник>, decline <ник>, claim <текст>, keep, steal, ability shield|insight, wager, mob fight|leave, stats, loot, status, leave, setarena1, setarena2, settings, rounds <1-30>, classes, pool, inspect <id>, itemclass <id> <класс>.");
+  tell(p, "Команды: !los menu, lobby create, start [bot], quick, chaos, highstakes, join, invite <ник>, accept <ник>, decline <ник>, claim <текст>, keep, steal, ability shield|insight, wager, mob fight|leave, stats, loot, status, leave, setarena1, setarena2, settings, rounds <1-30>, classes, pool, inspect <id>, itemclass <id> <класс>.");
 }
 function command(p, raw) {
   const parts = raw.trim().split(/\s+/), cmd = (parts[1] ?? "help").toLowerCase();
@@ -494,7 +495,13 @@ function command(p, raw) {
   else if (cmd === "highstakes") startBot(p,9,{highStakes:true});
   else if (cmd === "join") queueJoin(p);
   else if (cmd === "team" || cmd === "2v2") startTeamMatch(p);
-  else if (cmd === "invite") { const t=onlineByName(parts[2]??""); if(!t)return tell(p,"Игрок не найден."); invites.set(t.id,p.id); tell(t,p.name+" приглашает тебя. !los accept "+p.name); tell(p,"Приглашение отправлено."); }
+  else if (cmd === "lobby" && parts[2] === "create") { lobbies.set(p.id,true); tell(p,"Приватное лобби создано. Приглашай игроков командой !los invite <ник>."); }
+  else if (cmd === "invite") {
+    if (!lobbies.has(p.id)) lobbies.set(p.id,true);
+    const t=onlineByName(parts[2]??"");
+    if(!t || t.id===p.id || inMatch(t)) return tell(p,"Игрок не найден, указан ты сам или игрок уже занят.");
+    invites.set(t.id,p.id); tell(t,p.name+" приглашает тебя. !los accept "+p.name+" или !los decline "+p.name); tell(p,"Приглашение отправлено.");
+  }
   else if (cmd === "accept") acceptInvite(p,parts[2]??"");
   else if (cmd === "decline") { const h=onlineByName(parts[2]??""); if(h)tell(h,p.name+" отклонил приглашение."); invites.delete(p.id); }
   else if (cmd === "claim") submitClaim(p,parts.slice(2).join(" "));
