@@ -253,6 +253,8 @@ public final class MatchManager {
                 match.items.get(match.owner).add(match.roundItem.copy());
                 match.roundItem = ItemStack.EMPTY;
             }
+            for (ItemStack ammo : match.roundBonusItems) match.items.get(match.owner).add(ammo.copy());
+            match.roundBonusItems.clear();
             for (UUID id : List.of(match.first, match.second)) {
                 List<ItemStack> pending = pendingRewards.computeIfAbsent(id, ignored -> new ArrayList<>());
                 for (ItemStack stack : match.items.get(id)) pending.add(stack.copy());
@@ -345,6 +347,8 @@ public final class MatchManager {
             return;
         }
         match.roundItem = new ItemStack(item);
+        match.roundBonusItems.clear();
+        match.roundBonusItems.addAll(ItemPoolRegistry.get().getAmmunitionFor(id));
         match.roundItemId = id;
         match.roundClass = ItemPoolRegistry.get().getClassFor(id);
         match.claim = null;
@@ -352,8 +356,14 @@ public final class MatchManager {
 
         ServerPlayerEntity owner = server.getPlayerManager().getPlayer(match.owner);
         ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(match.other(match.owner));
-        if (owner != null) owner.sendMessage(Text.literal("§aРаунд " + match.round + "/" + match.totalRounds + ". Твой тайный предмет: §f" +
-            match.roundItem.getName().getString() + "§a (§f" + (match.roundClass == null ? "без класса" : match.roundClass.displayName()) + "§a). Расскажи о нём сопернику командой §e/leaveorsteal claim <текст>§a."), false);
+        if (owner != null) {
+            String ammoNote = match.roundBonusItems.isEmpty() ? "" : " §7Дополнительно получишь боеприпасы: " +
+                match.roundBonusItems.stream().map(stack -> stack.getCount() + "x " + stack.getName().getString())
+                    .reduce((a, b) -> a + ", " + b).orElse("") + ".";
+            owner.sendMessage(Text.literal("§aРаунд " + match.round + "/" + match.totalRounds + ". Твой тайный предмет: §f" +
+                match.roundItem.getName().getString() + "§a (§f" + (match.roundClass == null ? "без класса" : match.roundClass.displayName()) + "§a)." +
+                ammoNote + " Расскажи о нём сопернику командой §e/leaveorsteal claim <текст>§a."), false);
+        }
         if (chooser != null) chooser.sendMessage(Text.literal("§eРаунд " + match.round + "/" + match.totalRounds + ". Соперник выбирает предмет и готовит заявление. Сам предмет пока скрыт."), false);
     }
 
@@ -411,6 +421,8 @@ public final class MatchManager {
         UUID previousOwner = match.owner;
         UUID winner = steal ? player.getUuid() : previousOwner;
         match.items.get(winner).add(match.roundItem.copy());
+        for (ItemStack ammo : match.roundBonusItems) match.items.get(winner).add(ammo.copy());
+        match.roundBonusItems.clear();
 
         ServerPlayerEntity owner = player.getServer().getPlayerManager().getPlayer(previousOwner);
         if (owner != null) owner.sendMessage(Text.literal(steal ? "§cСоперник украл предмет этого раунда." :
@@ -551,6 +563,8 @@ public final class MatchManager {
             match.items.get(match.owner).add(match.roundItem.copy());
             match.roundItem = ItemStack.EMPTY;
         }
+        for (ItemStack ammo : match.roundBonusItems) match.items.get(match.owner).add(ammo.copy());
+        match.roundBonusItems.clear();
         match.phase = Phase.FINISHED;
         distributeItems(server, match);
         matches.remove(match.first);
@@ -589,6 +603,7 @@ public final class MatchManager {
         Phase phase = Phase.CLAIM;
         String claim;
         ItemStack roundItem = ItemStack.EMPTY;
+        final List<ItemStack> roundBonusItems = new ArrayList<>();
         Identifier roundItemId;
         ChestClass roundClass;
 
