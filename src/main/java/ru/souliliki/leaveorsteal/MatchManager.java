@@ -785,6 +785,124 @@ public final class MatchManager {
         player.sendMessage(Text.literal("§eПодойди к сопернику и нажми ПКМ, чтобы выбрать: уйти или сразиться."), false);
     }
 
+
+    private void spawnTrapChest(MinecraftServer server, Match match) {
+        ServerPlayerEntity first = server.getPlayerManager().getPlayer(match.first);
+        ServerPlayerEntity second = match.botOpponent ? null : server.getPlayerManager().getPlayer(match.second);
+        if (first == null) return;
+        ServerWorld world = first.getServerWorld();
+        double centerX = first.getX();
+        double centerZ = first.getZ();
+        if (second != null && second.getServerWorld() == world) {
+            centerX = (first.getX() + second.getX()) / 2.0;
+            centerZ = (first.getZ() + second.getZ()) / 2.0;
+        }
+        BlockPos base = BlockPos.ofFloored(centerX, first.getY(), centerZ);
+        BlockPos chosen = null;
+        for (int radius = 0; radius <= 4 && chosen == null; radius++) {
+            for (int dx = -radius; dx <= radius && chosen == null; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != radius) continue;
+                    BlockPos candidate = base.add(dx, 0, dz);
+                    if (world.getBlockState(candidate).isAir() &&
+                        world.getBlockState(candidate.down()).isSolidBlock(world, candidate.down())) {
+                        chosen = candidate;
+                        break;
+                    }
+                }
+            }
+        }
+        if (chosen == null) {
+            notifyBoth(server, match, "§eНе удалось найти свободное место для сундука с подвохом.");
+            return;
+        }
+        match.trapChestWorld = world;
+        match.trapChestPos = chosen;
+        match.trapChestOriginalState = world.getBlockState(chosen);
+        match.trapChestOpened = false;
+        match.trapChestCleanupTicks = 0;
+        world.setBlockState(chosen, Blocks.CHEST.getDefaultState(), 3);
+        world.playSound(null, chosen, SoundEvents.BLOCK_CHEST_LOCKED, SoundCategory.BLOCKS, 0.7F, 0.8F);
+        notifyBoth(server, match, "§6Сундук с подвохом появился на арене! Найди его и открой ПКМ. Содержимое неизвестно.");
+    }
+
+    public synchronized boolean openTrapChest(ServerPlayerEntity player, BlockPos pos) {
+        Match match = matches.get(player.getUuid());
+        if (match == null || match.phase == Phase.DUEL || match.phase == Phase.FINISHED ||
+            match.trapChestPos == null || !match.trapChestPos.equals(pos) ||
+            match.trapChestWorld != player.getServerWorld() || match.trapChestOpened) return false;
+
+        match.trapChestOpened = true;
+        match.trapChestCleanupTicks = 24;
+        ServerWorld world = match.trapChestWorld;
+        world.addSyncedBlockEvent(pos, Blocks.CHEST, 1, 1);
+        world.playSound(null, pos, SoundEvents.BLOCK_CHEST_OPEN, SoundCategory.BLOCKS, 0.9F, 0.9F + random.nextFloat() * 0.2F);
+
+        int outcome = random.nextInt(5);
+        switch (outcome) {
+            case 0 -> {
+                giveChestReward(player, null);
+                player.sendMessage(Text.literal("§aВ сундуке оказалась полезная награда!"), false);
+            }
+            case 1 -> giveChestReward(player, random.nextBoolean() ? ChestClass.LEGENDARY : ChestClass.RARE);
+            case 2 -> {
+                player.addStatusEffect(new StatusEffectInstance(StatusEffects.POISON, 100, 0));
+                player.sendMessage(Text.literal("§cЛовушка! Ядовитый газ отравил тебя на 5 секунд."), false);
+                world.playSound(null, pos, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.BLOCKS, 0.8F, 0.7F);
+            }
+            case 3 -> {
+                player.sendMessage(Text.literal("§cЛовушка! Сундук взорвался, но арена не пострадала."), false);
+                world.createExplosion(null, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
+                    1.5F, net.minecraft.world.World.ExplosionSourceType.NONE);
+            }
+            default -> player.sendMessage(Text.literal("§7Сундук оказался пустым... В этот раз повезло не тебе."), false);
+        }
+        return true;
+    }
+
+    private void giveChestReward(ServerPlayerEntity player, ChestClass preferredClass) {
+        Identifier rewardId = preferredClass == null ? ItemPoolRegistry.get().getRandomItem(random) :
+            ItemPoolRegistry.get().getRandomItem(preferredClass, random);
+        if (rewardId == null && preferredClass != null) rewardId = ItemPoolRegistry.get().getRandomItem(random);
+        if (rewardId == null) {
+            player.sendMessage(Text.literal("§eПул наград пуст — сундук не смог выдать предмет."), false);
+            return;
+        }
+        ItemStack reward = new ItemStack(Registries.ITEM.get(rewardId));
+        if (!player.getInventory().insertStack(reward)) player.dropItem(reward, false);
+        player.sendMessage(Text.literal((preferredClass == null ? "§aНаграда из сундука: §f" : "§6Редкая находка из сундука: §f") +
+            reward.getName().getString()), false);
+    }
+
+    private void removeTrapChest(Match match) {
+        if (match.trapChestWorld != null && match.trapChestPos != null) {
+            BlockPos pos = match.trapChestPos;
+            if (match.trapChestWorld.getBlockState(pos).isOf(Blocks.CHEST)) {
+                match.trapChestWorld.setBlockState(pos,
+                    match.trapChestOriginalState == null ? Blocks.AIR.getDefaultState() : match.trapChestOriginalState, 3);
+            }
+        }
+        match.trapChestWorld = null;
+        match.trapChestPos = null;
+        match.trapChestOriginalState = null;
+        match.trapChestOpened = false;
+        match.trapChestCleanupTicks = 0;
+    }
+
+    public synchronized void tick(MinecraftServer server) {
+        for (Match match : new HashSet<>(matches.values())) {
+            if (match.trapChestOpened && match.trapChestCleanupTicks > 0) {
+                match.trapChestCleanupTicks--;
+                if (match.trapChestCleanupTicks == 4 && match.trapChestWorld != null && match.trapChestPos != null) {
+                    match.trapChestWorld.addSyncedBlockEvent(match.trapChestPos, Blocks.CHEST, 1, 0);
+                    match.trapChestWorld.playSound(null, match.trapChestPos, SoundEvents.BLOCK_CHEST_CLOSE,
+                        SoundCategory.BLOCKS, 0.8F, 1.0F);
+                }
+                if (match.trapChestCleanupTicks == 0) removeTrapChest(match);
+            }
+        }
+    }
+
     public synchronized boolean showMobMenu(ServerPlayerEntity player, MobEntity mob) {
         Match match = matches.get(player.getUuid());
         if (match == null || !match.botOpponent || match.phase != Phase.DUEL ||
