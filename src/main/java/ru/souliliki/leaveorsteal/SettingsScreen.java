@@ -39,8 +39,6 @@ public final class SettingsScreen extends Screen {
             addDrawableChild(ButtonWidget.builder(Text.literal("−"), button ->
                 sendWeight(name, Math.max(0, weight - 1)))
                 .dimensions(center - 125, y, 28, 20).build());
-            addDrawableChild(ButtonWidget.builder(Text.literal(chestClass.displayName() + ": " + weight), button -> {})
-                .dimensions(center - 93, y, 186, 20).build());
             addDrawableChild(ButtonWidget.builder(Text.literal("+"), button ->
                 sendWeight(name, Math.min(100000, weight + 1)))
                 .dimensions(center + 97, y, 28, 20).build());
@@ -73,6 +71,14 @@ public final class SettingsScreen extends Screen {
         renderBackground(context, mouseX, mouseY, delta);
         super.render(context, mouseX, mouseY, delta);
         context.drawCenteredTextWithShadow(textRenderer, title, width / 2, Math.max(0, height / 2 - 155), 0xFFFFFF);
+        int top = Math.max(8, height / 2 - 135);
+        for (ChestClass chestClass : ChestClass.values()) {
+            int index = chestClass.ordinal();
+            int weight = index < classWeights.size() ? Math.max(0, classWeights.get(index)) : 0;
+            context.drawCenteredTextWithShadow(textRenderer,
+                Text.literal(chestClass.displayName() + ": " + weight),
+                width / 2, top + 89 + index * 22 + 6, 0xFFFFFF);
+        }
         context.drawCenteredTextWithShadow(textRenderer,
             Text.literal("Вес выпадения классов • изменения сохраняются автоматически"),
             width / 2, height - 12, 0xA0A0A0);
